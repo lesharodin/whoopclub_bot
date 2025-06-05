@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
-from config import ADMINS
+from config import ADMINS, PAY
 from datetime import datetime
 import asyncio
 
@@ -13,30 +13,23 @@ CHANNELS = {
 }
 
 @router.message(F.text.contains("Записаться"))
-async def show_trainings_list(message: Message):
+async def show_next_training(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date FROM trainings
             WHERE status = 'open'
-            ORDER BY date ASC
+            ORDER BY date ASC LIMIT 1
         """)
-        rows = cursor.fetchall()
+        row = cursor.fetchone()
 
-    if not rows:
+    if not row:
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M"), callback_data=f"select_training:{training_id}")]
-        for training_id, date_str in rows
-    ])
-
-    await message.answer("📅 Выбери тренировку:", reply_markup=keyboard)
-
-@router.callback_query(F.data.startswith("select_training:"))
-async def show_training_groups(callback: CallbackQuery):
-    training_id = int(callback.data.split(":")[1])
+    training_id, date_str = row
+    dt = datetime.fromisoformat(date_str)
+    pretty_date = dt.strftime("%d.%m.%Y %H:%M")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -45,7 +38,7 @@ async def show_training_groups(callback: CallbackQuery):
         ]
     ])
 
-    await callback.message.edit_text(f"Выбери группу для тренировки {training_id}:", reply_markup=keyboard)
+    await message.answer(f"📅 Ближайшая тренировка:\n<b>{pretty_date}</b>\n\nВыбери группу:", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
@@ -95,39 +88,62 @@ async def reserve_slot(callback: CallbackQuery):
             await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
             return
 
+        cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
+        sub = cursor.fetchone()
+        sub_count = sub[0] if sub else 0
+
+        if sub_count and sub_count > 0:
+            payment_type = "subscription"
+            cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
+        else:
+            payment_type = "manual"
+
         cursor.execute("""
-            INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at, payment_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
             training_id,
             user_id,
             group,
             channel,
             "pending",
-            datetime.now().isoformat()
+            datetime.now().isoformat(),
+            payment_type
         ))
         slot_id = cursor.lastrowid
         conn.commit()
 
-    await notify_admins_about_booking(callback.bot, training_id, user_id, group, channel, slot_id, username)
+    await notify_admins_about_booking(callback.bot, training_id, user_id, group, channel, slot_id, username, payment_type)
 
-    await callback.message.edit_text(
-        f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
-        f"💸 Ожидается подтверждение оплаты от администратора."
-    )
+    if payment_type == "subscription":
+        await callback.message.edit_text(
+            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"🎟 Оплата через абонемент. Ожидается подтверждение администратора."
+        )
+    else:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"confirm_payment:{slot_id}")]
+        ])
+        await callback.message.edit_text(
+            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"💳 Пожалуйста, оплатите по реквизитам: <code>+7 905 563 5566</code> Т-Банк\n"
+            f"После оплаты нажмите кнопку ниже.", reply_markup=keyboard
+        )
 
-async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username):
+async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username, payment_type):
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT nickname, system FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT nickname, system, subscription FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
-        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
-        training_row = cursor.fetchone()
 
     nickname = user[0] if user else "-"
     system = user[1] if user else "-"
-    training_date = datetime.fromisoformat(training_row[0]).strftime("%d.%m.%Y %H:%M") if training_row else "?"
+    remaining = user[2] if user else 0
+
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>профиль</a>"
+    payment_desc = "🎟 Абонемент" if payment_type == "subscription" else "💳 Реквизиты"
+    if payment_type == "subscription":
+        payment_desc += f" (осталось {remaining})"
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -137,12 +153,13 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
     ])
 
     text = (
-        f"📥 Новая запись на тренировку <b>{training_date}</b>:\n"
+        f"📥 Новая запись на тренировку:\n"
         f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
         f"🏁 Группа: <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>\n"
         f"📡 Канал: <b>{channel}</b>\n"
         f"🎮 OSD: <b>{nickname}</b>\n"
         f"🎥 Видео: <b>{system}</b>\n"
+        f"{payment_desc}\n"
         f"⏳ Ожидает подтверждения оплаты"
     )
 
@@ -154,30 +171,13 @@ async def confirm_booking(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
     with get_connection() as conn:
         cursor = conn.cursor()
-
-        # Получаем пользователя и статус абонемента
-        cursor.execute("SELECT user_id FROM slots WHERE id = ?", (slot_id,))
-        row = cursor.fetchone()
-        if not row:
-            await callback.message.edit_text("❌ Запись не найдена.")
-            return
-
-        user_id = row[0]
-
-        # Обновляем статус
         cursor.execute("UPDATE slots SET status = 'confirmed' WHERE id = ?", (slot_id,))
-
-        # Если у пользователя есть занятия по абонементу — списываем одно
-        cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
-        sub_row = cursor.fetchone()
-        if sub_row and sub_row[0] and sub_row[0] > 0:
-            cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
-
+        cursor.execute("SELECT user_id FROM slots WHERE id = ?", (slot_id,))
+        user_id = cursor.fetchone()[0]
         conn.commit()
 
     await callback.message.edit_text("✅ Оплата подтверждена")
     await callback.bot.send_message(user_id, "✅ Ваша запись подтверждена! Ждём вас на тренировке 🛸")
-
 
 @router.callback_query(F.data.startswith("reject:"))
 async def reject_booking(callback: CallbackQuery):

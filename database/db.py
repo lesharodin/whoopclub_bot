@@ -35,6 +35,7 @@ def init_db():
                 user_id INTEGER NOT NULL,
                 group_name TEXT NOT NULL,
                 channel TEXT NOT NULL,
+                payment_type TEXT NOT NULL,
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (training_id) REFERENCES trainings(id)
