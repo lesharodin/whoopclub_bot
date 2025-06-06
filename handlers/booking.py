@@ -110,7 +110,6 @@ async def reserve_slot(callback: CallbackQuery):
 
         if sub_count > 0:
             payment_type = "subscription"
-            cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
         else:
             payment_type = "manual"
 
@@ -205,9 +204,23 @@ async def confirm_booking(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
     with get_connection() as conn:
         cursor = conn.cursor()
+
+        # Получаем данные слота
+        cursor.execute("SELECT user_id, payment_type FROM slots WHERE id = ?", (slot_id,))
+        result = cursor.fetchone()
+        if not result:
+            await callback.answer("Запись не найдена.", show_alert=True)
+            return
+
+        user_id, payment_type = result
+
+        # Подтверждаем запись
         cursor.execute("UPDATE slots SET status = 'confirmed' WHERE id = ?", (slot_id,))
-        cursor.execute("SELECT user_id FROM slots WHERE id = ?", (slot_id,))
-        user_id = cursor.fetchone()[0]
+
+        # Списываем абонемент, если используется
+        if payment_type == "subscription":
+            cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
+
         conn.commit()
 
     await callback.message.edit_text("✅ Оплата подтверждена")
