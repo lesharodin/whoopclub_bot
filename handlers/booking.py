@@ -79,6 +79,17 @@ async def show_group_choice(callback: CallbackQuery):
             await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
             return
 
+        # Проверка: слотов больше 7 — значит мест нет
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND status IN ('pending', 'confirmed')
+        """, (training_id,))
+        total_booked = cursor.fetchone()[0]
+
+        if total_booked >= 7:
+            await callback.answer("Мест не осталось ❌", show_alert=True)
+            return
+
         # Получение даты тренировки
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
         row = cursor.fetchone()
@@ -97,6 +108,7 @@ async def show_group_choice(callback: CallbackQuery):
     ])
 
     await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
+
 
 
 @router.callback_query(F.data.startswith("book:"))
