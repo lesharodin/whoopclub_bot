@@ -14,7 +14,7 @@ async def show_available_trainings(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        cutoff_date = (now - timedelta(days=1)).isoformat()
+        cutoff_date = (now - timedelta(hours=1)).isoformat()
 
         cursor.execute("""
             SELECT t.id, t.date,
