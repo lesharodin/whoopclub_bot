@@ -2,41 +2,75 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
 from config import ADMINS, PAYMENT_LINK
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = Router()
 
 @router.message(F.text.contains("Записаться"))
 async def show_available_trainings(message: Message):
+    user_id = message.from_user.id
+    now = datetime.now()
+
     with get_connection() as conn:
         cursor = conn.cursor()
+
+        cutoff_date = (now - timedelta(days=1)).isoformat()
+
         cursor.execute("""
-            SELECT id, date FROM trainings
-            WHERE status = 'open'
-            ORDER BY date ASC
-        """)
+            SELECT t.id, t.date,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id) AS booked_count,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ?) AS user_booked
+            FROM trainings t
+            WHERE t.status = 'open' AND datetime(t.date) > ?
+            ORDER BY t.date ASC
+            LIMIT 6
+        """, (user_id, cutoff_date))
+
         trainings = cursor.fetchall()
 
     if not trainings:
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=datetime.fromisoformat(date).strftime("%d.%m.%Y %H:%M"),
-                                  callback_data=f"select_training:{training_id}")]
-            for training_id, date in trainings
-        ]
-    )
+    keyboard = []
+    for training_id, date_str, booked_count, user_booked in trainings:
+        date_obj = datetime.fromisoformat(date_str)
+        label = date_obj.strftime("%d.%m %H:%M")
 
-    await message.answer("Выберите тренировку для записи:", reply_markup=keyboard)
+        user_booked = user_booked or 0
+        booked_count = booked_count or 0
+
+        # Пометка
+        if user_booked > 0:
+            label += " ✅"
+        elif booked_count >= 7:  # или 5 — если известно, какая группа
+            label += " ❌"
+
+        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
+
+    await message.answer("Выберите тренировку для записи:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+
 
 @router.callback_query(F.data.startswith("select_training:"))
 async def show_group_choice(callback: CallbackQuery):
     training_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
 
     with get_connection() as conn:
         cursor = conn.cursor()
+
+        # Проверка: уже записан?
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND user_id = ? AND status IN ('pending', 'confirmed')
+        """, (training_id, user_id))
+        already = cursor.fetchone()[0]
+
+        if already:
+            await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
+            return
+
+        # Получение даты тренировки
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
         row = cursor.fetchone()
 
@@ -54,6 +88,7 @@ async def show_group_choice(callback: CallbackQuery):
     ])
 
     await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
+
 
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
@@ -105,12 +140,6 @@ async def reserve_slot(callback: CallbackQuery):
 
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM slots WHERE training_id = ? AND user_id = ?", (training_id, user_id))
-        already = cursor.fetchone()[0]
-        if already:
-            await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
-            return
-
         cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
         sub = cursor.fetchone()
         sub_count = sub[0] if sub else 0
