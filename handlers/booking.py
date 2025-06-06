@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
-from config import ADMINS
+from config import ADMINS, PAYMENT_LINK
 from datetime import datetime
 
 router = Router()
@@ -150,7 +150,7 @@ async def reserve_slot(callback: CallbackQuery):
         ])
         await callback.message.edit_text(
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
-            f"💳 Пожалуйста, оплатите по реквизитам: <code>+7 905 563 5566</code> Т-Банк\n"
+            f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"После оплаты нажмите кнопку ниже.", reply_markup=keyboard
         )
 

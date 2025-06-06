@@ -9,4 +9,4 @@ if not BOT_TOKEN:
     exit(1)
 
 ADMINS = list(map(int, os.getenv("ADMINS", "").split()))
-PAY = list(map(int, os.getenv("PAY", "").split()))
+PAYMENT_LINK = os.getenv("PAYMENT_LINK")

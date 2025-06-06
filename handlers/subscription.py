@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database.db import get_connection
-from config import ADMINS
+from config import ADMINS, PAYMENT_LINK
 from datetime import datetime
 
 router = Router()
@@ -43,7 +43,7 @@ async def process_subscription(callback: CallbackQuery):
 
     await callback.message.edit_text(
         f"Вы выбрали абонемент на <b>{count}</b> тренировок за <b>{price}₽</b>.\n"
-        f"💳 Оплатите по реквизитам: <code>+7 905 563 5566</code> Т-Банк\n\n"
+        f"💳 Оплатите по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n\n"
         f"После оплаты нажмите кнопку ниже:",
         reply_markup=kb
     )
