@@ -71,7 +71,7 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=markup)
 
 # Команда для проверки своего Telegram ID
-@router.message(F.text == "/id")Add commentMore actions
+@router.message(F.text == "/id")
 async def get_id(message: Message):
     await message.answer(f"🪪 Твой Telegram ID: <code>{message.from_user.id}</code>")
 
