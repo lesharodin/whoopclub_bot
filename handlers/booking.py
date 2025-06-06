@@ -6,11 +6,6 @@ from datetime import datetime
 
 router = Router()
 
-CHANNELS = {
-    "fast": 5,
-    "standard": 7
-}
-
 @router.message(F.text.contains("Записаться"))
 async def show_available_trainings(message: Message):
     with get_connection() as conn:
@@ -65,8 +60,16 @@ async def choose_channel(callback: CallbackQuery):
     _, training_id, group = callback.data.split(":")
     training_id = int(training_id)
 
-    total = CHANNELS.get(group)
-    all_channels = [f"Канал {i+1}" for i in range(total)]
+    # Новый список каналов для каждой группы
+    GROUP_CHANNELS = {
+        "fast": ["R2", "F2", "F4", "R7", "R8"],
+        "standard": ["R1", "R2", "F2", "F4", "R7", "R8", "L1"]
+    }
+
+    all_channels = GROUP_CHANNELS.get(group)
+    if not all_channels:
+        await callback.message.edit_text("❌ Неизвестная группа.")
+        return
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -87,7 +90,11 @@ async def choose_channel(callback: CallbackQuery):
         for ch in available
     ])
 
-    await callback.message.edit_text(f"🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:", reply_markup=keyboard)
+    await callback.message.edit_text(
+        f"🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",
+        reply_markup=keyboard
+    )
+
 
 @router.callback_query(F.data.startswith("reserve:"))
 async def reserve_slot(callback: CallbackQuery):
@@ -266,15 +273,56 @@ async def reject_booking(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id FROM slots WHERE id = ?", (slot_id,))
+
+        # Получаем данные о слоте и пользователе
+        cursor.execute("""
+            SELECT s.user_id, s.status, s.group_name, s.channel, s.payment_type, t.date,
+                   u.nickname, u.system
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ?
+        """, (slot_id,))
         row = cursor.fetchone()
-        user_id = row[0] if row else None
+
+        if not row:
+            await callback.answer("❌ Запись не найдена.", show_alert=True)
+            return
+
+        user_id, status, group, channel, payment_type, training_date, nickname, system = row
+
+        if status == "confirmed":
+            await callback.answer("❗ Эта запись уже подтверждена другим админом.", show_alert=True)
+            return
+
+        # Удаляем запись
         cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
         conn.commit()
 
+    # Уведомление пользователя
     await callback.message.edit_text("❌ Запись отклонена")
-    if user_id:
-        await callback.bot.send_message(user_id, "❌ Ваша запись была отклонена. Попробуйте снова или свяжитесь с админом.")
+    await callback.bot.send_message(user_id, "❌ Ваша запись была отклонена. Попробуйте снова или свяжитесь с админом.")
+
+    # Формируем лог для админа
+    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
+    name = callback.from_user.full_name
+    user_link = f"<a href='tg://user?id={user_id}'>{name}</a>"
+
+    admin_message = (
+        f"❌ Вы отклонили запись:\n"
+        f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
+        f"📅 Дата: <b>{date_fmt}</b>\n"
+        f"🏁 Группа: <b>{group_label}</b>\n"
+        f"📡 Канал: <b>{channel}</b>\n"
+        f"🎮 OSD: <b>{nickname}</b>\n"
+        f"🎥 Видео: <b>{system}</b>\n"
+        f"{payment_text}"
+    )
+
+    await callback.bot.send_message(callback.from_user.id, admin_message)
+
 @router.message(F.text.contains("Мои записи"))
 async def show_my_bookings(message: Message):
     user_id = message.from_user.id
