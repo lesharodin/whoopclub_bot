@@ -70,7 +70,12 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
 
     return InlineKeyboardMarkup(inline_keyboard=markup)
 
+# Команда для проверки своего Telegram ID
+@router.message(F.text == "/id")Add commentMore actions
+async def get_id(message: Message):
+    await message.answer(f"🪪 Твой Telegram ID: <code>{message.from_user.id}</code>")
 
+# Создание тренировок
 @router.message(F.text == "/new_training")
 async def show_calendar(message: Message):
     if message.from_user.id not in ADMINS:
