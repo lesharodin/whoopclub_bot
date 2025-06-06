@@ -6,6 +6,11 @@ from datetime import datetime
 
 router = Router()
 
+PRICES = {
+    5: 3800,
+    10: 7200
+}
+
 @router.message(F.text.contains("Купить абонемент"))
 async def show_subscription_options(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -21,6 +26,7 @@ async def process_subscription(callback: CallbackQuery):
     count = int(callback.data.split(":")[1])
     user_id = callback.from_user.id
     username = callback.from_user.username
+    price = PRICES.get(count, "?")
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -36,12 +42,11 @@ async def process_subscription(callback: CallbackQuery):
     ])
 
     await callback.message.edit_text(
-        f"Вы выбрали абонемент на {count} тренировок.\n"
-        f"💳 Реквизиты для оплаты: +7 905 563 5566 Т-Банк\n\n"
+        f"Вы выбрали абонемент на <b>{count}</b> тренировок за <b>{price}₽</b>.\n"
+        f"💳 Оплатите по реквизитам: <code>+7 905 563 5566</code> Т-Банк\n\n"
         f"После оплаты нажмите кнопку ниже:",
         reply_markup=kb
     )
-
 
 @router.callback_query(F.data.startswith("sub_paid:"))
 async def notify_admins(callback: CallbackQuery):
@@ -73,8 +78,6 @@ async def notify_admins(callback: CallbackQuery):
         await callback.bot.send_message(admin, text, reply_markup=kb)
 
     await callback.message.edit_text("🔔 Ожидайте подтверждения от администратора.")
-
-
 
 @router.callback_query(F.data.startswith("sub_ok:"))
 async def confirm_subscription(callback: CallbackQuery):

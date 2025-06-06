@@ -1,9 +1,8 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
-from config import ADMINS, PAY
+from config import ADMINS
 from datetime import datetime
-import asyncio
 
 router = Router()
 
@@ -13,23 +12,44 @@ CHANNELS = {
 }
 
 @router.message(F.text.contains("Записаться"))
-async def show_next_training(message: Message):
+async def show_available_trainings(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date FROM trainings
             WHERE status = 'open'
-            ORDER BY date ASC LIMIT 1
+            ORDER BY date ASC
         """)
-        row = cursor.fetchone()
+        trainings = cursor.fetchall()
 
-    if not row:
+    if not trainings:
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    training_id, date_str = row
-    dt = datetime.fromisoformat(date_str)
-    pretty_date = dt.strftime("%d.%m.%Y %H:%M")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=datetime.fromisoformat(date).strftime("%d.%m.%Y %H:%M"),
+                                  callback_data=f"select_training:{training_id}")]
+            for training_id, date in trainings
+        ]
+    )
+
+    await message.answer("Выберите тренировку для записи:", reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("select_training:"))
+async def show_group_choice(callback: CallbackQuery):
+    training_id = int(callback.data.split(":")[1])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        await callback.message.edit_text("❌ Тренировка не найдена.")
+        return
+
+    date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -38,7 +58,7 @@ async def show_next_training(message: Message):
         ]
     ])
 
-    await message.answer(f"📅 Ближайшая тренировка:\n<b>{pretty_date}</b>\n\nВыбери группу:", reply_markup=keyboard)
+    await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
@@ -78,11 +98,7 @@ async def reserve_slot(callback: CallbackQuery):
 
     with get_connection() as conn:
         cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT COUNT(*) FROM slots
-            WHERE training_id = ? AND user_id = ?
-        """, (training_id, user_id))
+        cursor.execute("SELECT COUNT(*) FROM slots WHERE training_id = ? AND user_id = ?", (training_id, user_id))
         already = cursor.fetchone()[0]
         if already:
             await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
@@ -92,7 +108,7 @@ async def reserve_slot(callback: CallbackQuery):
         sub = cursor.fetchone()
         sub_count = sub[0] if sub else 0
 
-        if sub_count and sub_count > 0:
+        if sub_count > 0:
             payment_type = "subscription"
             cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
         else:
@@ -113,9 +129,8 @@ async def reserve_slot(callback: CallbackQuery):
         slot_id = cursor.lastrowid
         conn.commit()
 
-    await notify_admins_about_booking(callback.bot, training_id, user_id, group, channel, slot_id, username, payment_type)
-
     if payment_type == "subscription":
+        await notify_admins_about_booking(callback.bot, training_id, user_id, group, channel, slot_id, username, payment_type)
         await callback.message.edit_text(
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
             f"🎟 Оплата через абонемент. Ожидается подтверждение администратора."
@@ -129,6 +144,25 @@ async def reserve_slot(callback: CallbackQuery):
             f"💳 Пожалуйста, оплатите по реквизитам: <code>+7 905 563 5566</code> Т-Банк\n"
             f"После оплаты нажмите кнопку ниже.", reply_markup=keyboard
         )
+
+@router.callback_query(F.data.startswith("confirm_payment:"))
+async def confirm_manual_payment(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    username = callback.from_user.username
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT training_id, group_name, channel FROM slots WHERE id = ?", (slot_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        await callback.answer("Запись не найдена.", show_alert=True)
+        return
+
+    training_id, group, channel = row
+    await notify_admins_about_booking(callback.bot, training_id, user_id, group, channel, slot_id, username, "manual")
+    await callback.message.edit_text("🔔 Администратор уведомлён. Ожидайте подтверждения оплаты.")
 
 async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username, payment_type):
     with get_connection() as conn:
@@ -193,3 +227,30 @@ async def reject_booking(callback: CallbackQuery):
     await callback.message.edit_text("❌ Запись отклонена")
     if user_id:
         await callback.bot.send_message(user_id, "❌ Ваша запись была отклонена. Попробуйте снова или свяжитесь с админом.")
+@router.message(F.text.contains("Мои записи"))
+async def show_my_bookings(message: Message):
+    user_id = message.from_user.id
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.date, s.group_name, s.channel, s.status
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            WHERE s.user_id = ?
+            ORDER BY t.date ASC
+        """, (user_id,))
+        rows = cursor.fetchall()
+
+    if not rows:
+        await message.answer("📭 У вас пока нет записей на тренировки.")
+        return
+
+    lines = ["📅 Ваши записи на тренировки:\n"]
+    for date_str, group, channel, status in rows:
+        date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
+        group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+        status_label = "⏳ Ожидает" if status == "pending" else "✅ Подтверждена"
+        lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}")
+
+    await message.answer("\n".join(lines))
