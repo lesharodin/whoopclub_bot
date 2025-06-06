@@ -35,7 +35,15 @@ async def show_available_trainings(message: Message):
     keyboard = []
     for training_id, date_str, booked_count, user_booked in trainings:
         date_obj = datetime.fromisoformat(date_str)
-        label = date_obj.strftime("%d.%m %H:%M")
+
+        # День недели
+        weekday_label = ""
+        if date_obj.weekday() == 1:
+            weekday_label = "Вторник "
+        elif date_obj.weekday() == 5:
+            weekday_label = "Суббота "
+
+        label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')}"
 
         user_booked = user_booked or 0
         booked_count = booked_count or 0
@@ -43,12 +51,13 @@ async def show_available_trainings(message: Message):
         # Пометка
         if user_booked > 0:
             label += " ✅"
-        elif booked_count >= 7:  # или 5 — если известно, какая группа
+        elif booked_count >= 7:  # предположительно максимум мест
             label += " ❌"
 
         keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
 
     await message.answer("Выберите тренировку для записи:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+
 
 
 @router.callback_query(F.data.startswith("select_training:"))
