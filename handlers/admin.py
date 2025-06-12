@@ -11,10 +11,10 @@ router = Router()
 
 
 def get_existing_training_dates() -> set[str]:
-    """Получает даты созданных тренировок (без времени) в формате 'YYYY-MM-DD'."""
+    """Получает даты только открытых тренировок (без времени) в формате 'YYYY-MM-DD'."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT date FROM trainings")
+        cursor.execute("SELECT date FROM trainings WHERE status = 'open'")
         results = cursor.fetchall()
     return {datetime.fromisoformat(row[0]).date().isoformat() for row in results}
 
@@ -255,6 +255,91 @@ async def confirm_add_subscription(callback: CallbackQuery):
 async def cancel_add_subscription(callback: CallbackQuery):
     await callback.message.edit_text("❌ Начисление абонементов отменено.")
     await callback.answer()
+
+
+#отмена тренировки    
+@router.message(Command("cancel_training"))
+async def cancel_training(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    now = datetime.now().isoformat()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, date FROM trainings
+            WHERE status = 'open' AND datetime(date) > ?
+            ORDER BY date ASC
+        """, (now,))
+        rows = cursor.fetchall()
+
+    if not rows:
+        await message.answer("❌ Нет будущих открытых тренировок.")
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=datetime.fromisoformat(date).strftime("%d.%m %H:%M"),
+            callback_data=f"cancel_train:{training_id}"
+        )]
+        for training_id, date in rows
+    ])
+
+    await message.answer("Выбери тренировку для отмены:", reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("cancel_train:"))
+async def confirm_training_cancel(callback: CallbackQuery):
+    training_id = int(callback.data.split(":")[1])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Получаем дату тренировки
+        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
+        row = cursor.fetchone()
+        if not row:
+            await callback.answer("❌ Тренировка не найдена", show_alert=True)
+            return
+        date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
+
+        # Получаем всех участников
+        cursor.execute("""
+            SELECT s.user_id, s.status
+            FROM slots s
+            WHERE s.training_id = ?
+        """, (training_id,))
+        participants = cursor.fetchall()
+
+        # Обновляем статус тренировки
+        cursor.execute("UPDATE trainings SET status = 'cancelled' WHERE id = ?", (training_id,))
+        conn.commit()
+
+    # Рассылаем уведомления
+    for user_id, status in participants:
+        try:
+            if status == "confirmed":
+                # Возврат абонемента
+                with get_connection() as conn:
+                    conn.execute(
+                        "UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,)
+                    )
+                await callback.bot.send_message(
+                    user_id,
+                    f"❌ Тренировка {date_str} была отменена.\n🎟 Вам возвращён 1 абонемент."
+                )
+            else:
+                await callback.bot.send_message(
+                    user_id,
+                    f"❌ Тренировка {date_str} была отменена."
+                )
+        except Exception as e:
+            print(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+
+    await callback.message.edit_text(f"✅ Тренировка {date_str} отменена, пользователи уведомлены.")
+    await callback.answer()
+
 
 #подсказки
 
