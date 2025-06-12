@@ -3,6 +3,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from datetime import datetime, timedelta
 from config import ADMINS
 from database.db import get_connection
+from aiogram.filters.command import Command
+from aiogram.utils.markdown import hbold
 import calendar
 
 router = Router()
@@ -167,3 +169,110 @@ async def send_calendar(target, year: int, month: int):
         await target.answer(text, reply_markup=kb)
     else:
         await target.edit_text(text, reply_markup=kb)
+
+
+#Начисление абонементов
+
+
+@router.message(Command("add_subscription"))
+async def add_subscription_command(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    parts = message.text.strip().split()
+    if len(parts) != 3:
+        await message.answer("❗ Используй формат: /add_subscription <user_id> <кол-во>")
+        return
+
+    try:
+        target_user_id = int(parts[1])
+        count = int(parts[2])
+        if count <= 0:
+            raise ValueError
+    except ValueError:
+        await message.answer("❗ Введи корректные числовые значения.")
+        return
+
+    # Проверим, существует ли пользователь
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT nickname FROM users WHERE user_id = ?", (target_user_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        await message.answer("❌ Пользователь не найден.")
+        return
+
+    nickname = row[0]
+
+    # Кнопки подтверждения
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_add_sub:{target_user_id}:{count}"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_add_sub")
+        ]
+    ])
+    await message.answer(
+        f"Вы действительно хотите начислить {count} абонементов пользователю <b>{nickname}</b> (ID: <code>{target_user_id}</code>)?",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data.startswith("confirm_add_sub:"))
+async def confirm_add_subscription(callback: CallbackQuery):
+    _, user_id_str, count_str = callback.data.split(":")
+    user_id = int(user_id_str)
+    count = int(count_str)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET subscription = subscription + ? WHERE user_id = ?", (count, user_id))
+        cursor.execute("SELECT nickname FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        conn.commit()
+
+    nickname = row[0] if row else "неизвестный"
+
+    # Уведомление админу
+    await callback.message.edit_text(
+        f"✅ Начислено {count} абонементов пользователю <b>{nickname}</b> (ID: <code>{user_id}</code>)."
+    )
+    await callback.answer()
+
+    # Уведомление пользователя
+    try:
+        await callback.bot.send_message(
+            user_id,
+            f"🎉 Вам начислено <b>{count}</b> абонементов! Теперь вы можете записаться на тренировку без оплаты."
+        )
+    except Exception as e:
+        # Если пользователь не начал бота, ловим ошибку
+        await callback.message.answer(f"⚠️ Не удалось отправить сообщение пользователю: {e}")
+
+
+@router.callback_query(F.data == "cancel_add_sub")
+async def cancel_add_subscription(callback: CallbackQuery):
+    await callback.message.edit_text("❌ Начисление абонементов отменено.")
+    await callback.answer()
+
+#подсказки
+
+@router.message(F.text == "/admin")
+async def admin_help(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    help_text = (
+        "🛠 <b>Админ-команды:</b>\n\n"
+        "📋 <b>/users</b> — список всех зарегистрированных пользователей\n"
+        "📅 <b>/new_training</b> — создать новую тренировку через календарь\n"
+        "➕ <b>/add_subscription &lt;user_id&gt; &lt;кол-во&gt;</b> — начислить абонементы пользователю\n"
+        "🪪 <b>/id</b> — узнать свой Telegram ID\n"
+        "\n"
+        "💡 После команды <code>/add_subscription</code> бот спросит подтверждение перед начислением.\n"
+        "Создание тренировки доступно только на вторник или субботу.\n"
+    )
+
+    await message.answer(help_text, parse_mode="HTML")
