@@ -75,6 +75,46 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
 async def get_id(message: Message):
     await message.answer(f"🪪 Твой Telegram ID: <code>{message.from_user.id}</code>")
 
+#Список пользователей
+
+@router.message(F.text == "/users")
+async def list_users(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_id, nickname, system, subscription
+            FROM users
+            ORDER BY user_id
+        """)
+        users = cursor.fetchall()
+
+    if not users:
+        await message.answer("📭 В базе нет зарегистрированных пользователей.")
+        return
+
+    lines = ["📋 Список пользователей:\n"]
+    for user_id, nickname, system, subscription in users:
+        # Пытаемся получить username и полное имя
+        chat_member = await message.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+        full_name = chat_member.user.full_name
+        username = chat_member.user.username
+
+        user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
+
+        lines.append(
+            f"{user_link} | ID: <code>{user_id}</code>\n"
+            f"🎮 OSD: {nickname}\n"
+            f"🎥 Система: {system}\n"
+            f"🎟 Абонементов: {subscription}\n"
+            f"---"
+        )
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
+
 # Создание тренировок
 @router.message(F.text == "/new_training")
 async def show_calendar(message: Message):
