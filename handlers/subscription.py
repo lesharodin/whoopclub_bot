@@ -82,26 +82,88 @@ async def notify_admins(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("sub_ok:"))
 async def confirm_subscription(callback: CallbackQuery):
     subscription_id = int(callback.data.split(":")[1])
+    admin_name = callback.from_user.full_name
+
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, count FROM subscriptions WHERE id = ?", (subscription_id,))
-        user_id, count = cursor.fetchone()
+
+        # Проверяем текущий статус
+        cursor.execute("SELECT user_id, count, status FROM subscriptions WHERE id = ?", (subscription_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            await callback.answer("❌ Подписка не найдена.", show_alert=True)
+            return
+
+        user_id, count, status = result
+
+        if status != "pending":
+            await callback.answer("⚠️ Эта подписка уже обработана.", show_alert=True)
+            return
+
+        # Обновляем статус и абонементы
         cursor.execute("UPDATE subscriptions SET status = 'confirmed' WHERE id = ?", (subscription_id,))
         cursor.execute("UPDATE users SET subscription = COALESCE(subscription, 0) + ? WHERE user_id = ?", (count, user_id))
+        cursor.execute("SELECT subscription, nickname FROM users WHERE user_id = ?", (user_id,))
+        sub_count, nickname = cursor.fetchone()
+
         conn.commit()
 
     await callback.message.edit_text("✅ Абонемент подтверждён")
-    await callback.bot.send_message(user_id, f"✅ Оплата абонемента подтверждена. Вам доступно {count} тренировок.")
+    await callback.bot.send_message(user_id, f"✅ Оплата абонемента подтверждена. Вам доступно {sub_count} тренировок.")
+
+    username = callback.from_user.username
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{nickname or 'профиль'}</a>"
+
+    text = (
+        f"🎟 Абонемент подтверждён админом <b>{admin_name}</b>\n"
+        f"👤 Пользователь: {user_link} (ID: <code>{user_id}</code>)\n"
+        f"📦 Добавлено: <b>{count}</b> тренировок\n"
+        f"📊 Всего доступно: <b>{sub_count}</b>"
+    )
+
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, text, parse_mode="HTML")
+
+
 
 @router.callback_query(F.data.startswith("sub_reject:"))
 async def reject_subscription(callback: CallbackQuery):
     subscription_id = int(callback.data.split(":")[1])
+    admin_name = callback.from_user.full_name
+
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id FROM subscriptions WHERE id = ?", (subscription_id,))
-        user_id = cursor.fetchone()[0]
+        cursor.execute("SELECT user_id, count, status FROM subscriptions WHERE id = ?", (subscription_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            await callback.answer("❌ Подписка не найдена.", show_alert=True)
+            return
+
+        user_id, count, status = result
+
+        if status != "pending":
+            await callback.answer("⚠️ Эта подписка уже обработана.", show_alert=True)
+            return
+
         cursor.execute("DELETE FROM subscriptions WHERE id = ?", (subscription_id,))
+        cursor.execute("SELECT nickname FROM users WHERE user_id = ?", (user_id,))
+        nickname_row = cursor.fetchone()
+        nickname = nickname_row[0] if nickname_row else "профиль"
         conn.commit()
 
     await callback.message.edit_text("❌ Запрос отклонён")
     await callback.bot.send_message(user_id, "❌ Оплата не подтверждена. Попробуйте снова или свяжитесь с админом.")
+
+    username = callback.from_user.username
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{nickname}</a>"
+
+    text = (
+        f"🚫 Абонемент <b>отклонён</b> админом <b>{admin_name}</b>\n"
+        f"👤 Пользователь: {user_link} (ID: <code>{user_id}</code>)\n"
+        f"📦 Запрошено: <b>{count}</b> тренировок"
+    )
+
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, text, parse_mode="HTML")

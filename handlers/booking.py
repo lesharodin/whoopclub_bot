@@ -158,6 +158,18 @@ async def reserve_slot(callback: CallbackQuery):
     training_id = int(training_id)
     user_id = callback.from_user.id
     username = callback.from_user.username
+    # Проверка: канал уже может быть занят
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND group_name = ? AND channel = ? AND status IN ('pending', 'confirmed')
+        """, (training_id, group, channel))
+        taken = cursor.fetchone()[0]
+
+    if taken:
+        await callback.answer("Этот канал уже занят другим участником.", show_alert=True)
+        return
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
@@ -394,9 +406,9 @@ async def reject_booking(callback: CallbackQuery):
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
     name = callback.from_user.full_name
     user_link = f"<a href='tg://user?id={user_id}'>{name}</a>"
-
+    admin_name = callback.from_user.full_name
     admin_message = (
-        f"❌ Вы отклонили запись:\n"
+        f"❌ Запись отклонена админом <b>{admin_name}</b>:\n"
         f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
         f"📅 Дата: <b>{date_fmt}</b>\n"
         f"🏁 Группа: <b>{group_label}</b>\n"
@@ -406,7 +418,8 @@ async def reject_booking(callback: CallbackQuery):
         f"{payment_text}"
     )
 
-    await callback.bot.send_message(callback.from_user.id, admin_message)
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
 @router.message(F.text.contains("Мои записи"))
 async def show_my_bookings(message: Message):
