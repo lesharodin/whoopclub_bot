@@ -102,8 +102,8 @@ async def show_group_choice(callback: CallbackQuery):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="⚡ Быстрая группа", callback_data=f"book:{training_id}:fast"),
-            InlineKeyboardButton(text="🏁 Стандартная группа", callback_data=f"book:{training_id}:standard")
+            InlineKeyboardButton(text="⚡ Быстрая", callback_data=f"book:{training_id}:fast"),
+            InlineKeyboardButton(text="🏁 Стандартная", callback_data=f"book:{training_id}:standard")
         ]
     ])
 
@@ -168,6 +168,11 @@ async def reserve_slot(callback: CallbackQuery):
     date_str = row[0]  # <-- сохраняем дату
     with get_connection() as conn:
         cursor = conn.cursor()
+        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
+        row = cursor.fetchone()
+        date_fmt = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M") if row else "неизвестна"
+    with get_connection() as conn:
+        cursor = conn.cursor()
         cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
         sub = cursor.fetchone()
         sub_count = sub[0] if sub else 0
@@ -198,6 +203,7 @@ async def reserve_slot(callback: CallbackQuery):
     username, payment_type, callback.from_user.full_name, date_str
 )
         await callback.message.edit_text(
+            f"📅 <b> Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
             f"🎟 Оплата через абонемент. Ожидается подтверждение администратора."
         )
@@ -206,6 +212,7 @@ async def reserve_slot(callback: CallbackQuery):
             [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"confirm_payment:{slot_id}")]
         ])
         await callback.message.edit_text(
+            f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
             f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"После оплаты нажмите кнопку ниже.", reply_markup=keyboard
