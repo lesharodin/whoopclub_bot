@@ -18,8 +18,8 @@ async def show_available_trainings(message: Message):
 
         cursor.execute("""
             SELECT t.id, t.date,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id) AS booked_count,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ?) AS user_booked
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked
             FROM trainings t
             WHERE t.status = 'open' AND datetime(t.date) > ?
             ORDER BY t.date ASC
@@ -32,26 +32,24 @@ async def show_available_trainings(message: Message):
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
+    total_slots = 12  # 5 в fast + 7 в standard
+
     keyboard = []
     for training_id, date_str, booked_count, user_booked in trainings:
         date_obj = datetime.fromisoformat(date_str)
 
-        # День недели
         weekday_label = ""
         if date_obj.weekday() == 1:
             weekday_label = "Вторник "
         elif date_obj.weekday() == 5:
             weekday_label = "Суббота "
 
-        label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')}"
+        free_slots = total_slots - (booked_count or 0)
+        label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')} ({free_slots})"
 
-        user_booked = user_booked or 0
-        booked_count = booked_count or 0
-
-        # Пометка
-        if user_booked > 0:
+        if (user_booked or 0) > 0:
             label += " ✅"
-        elif booked_count >= 7:  # предположительно максимум мест
+        elif (booked_count or 0) >= total_slots:
             label += " ❌"
 
         keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
@@ -79,14 +77,19 @@ async def show_group_choice(callback: CallbackQuery):
             await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
             return
 
-        # Проверка: слотов больше 7 — значит мест нет
+        # Получаем кол-во занятых мест в каждой группе
         cursor.execute("""
-            SELECT COUNT(*) FROM slots
+            SELECT group_name, COUNT(*) 
+            FROM slots 
             WHERE training_id = ? AND status IN ('pending', 'confirmed')
+            GROUP BY group_name
         """, (training_id,))
-        total_booked = cursor.fetchone()[0]
+        counts = dict(cursor.fetchall())
 
-        if total_booked >= 7:
+        fast_free = 5 - counts.get("fast", 0)
+        standard_free = 7 - counts.get("standard", 0)
+
+        if fast_free + standard_free <= 0:
             await callback.answer("Мест не осталось ❌", show_alert=True)
             return
 
@@ -100,14 +103,19 @@ async def show_group_choice(callback: CallbackQuery):
 
     date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="⚡ Быстрая", callback_data=f"book:{training_id}:fast"),
-            InlineKeyboardButton(text="🏁 Стандартная", callback_data=f"book:{training_id}:standard")
-        ]
-    ])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=f"⚡ Быстрая ({fast_free})", 
+            callback_data=f"book:{training_id}:fast"
+        ),
+        InlineKeyboardButton(
+            text=f"🏁 Стандартная ({standard_free})", 
+            callback_data=f"book:{training_id}:standard"
+        )
+    ]])
 
     await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
+
 
 
 
