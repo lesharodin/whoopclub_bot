@@ -399,4 +399,188 @@ async def show_my_bookings(message: Message):
         status_label = "⏳ Ожидает" if status == "pending" else "✅ Подтверждена"
         lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}")
 
-    await message.answer("\n".join(lines))
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отменить запись", callback_data="cancel_booking_menu")]
+    ])
+
+    await message.answer("\n".join(lines), reply_markup=keyboard)
+
+#отмена тренировки
+
+@router.callback_query(F.data == "cancel_booking_menu")
+async def show_user_bookings_to_cancel(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    now = datetime.now()
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.id, t.date
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            WHERE s.user_id = ? AND s.status = 'confirmed' AND datetime(t.date) > ?
+            ORDER BY t.date ASC
+        """, (user_id, now.isoformat()))
+        bookings = cursor.fetchall()
+
+    if not bookings:
+        await callback.message.edit_text("❌ У вас нет активных записей для отмены.")
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text=datetime.fromisoformat(date).strftime("%d.%m %H:%M"),
+                callback_data=f"ask_cancel:{slot_id}"
+            )]
+            for slot_id, date in bookings
+        ]
+    )
+
+    await callback.message.edit_text("Выберите запись, которую хотите отменить:", reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("ask_cancel:"))
+async def ask_to_cancel(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT t.date FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            WHERE s.id = ?
+        """, (slot_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        await callback.answer("Запись не найдена", show_alert=True)
+        return
+
+    training_date = datetime.fromisoformat(row[0])
+    now = datetime.now()
+    hours_before = (training_date - now).total_seconds() / 3600
+
+    text = (
+        f"📅 Тренировка {training_date.strftime('%d.%m %H:%M')}\n\n"
+        f"❓ Вы уверены, что хотите отменить запись?\n\n"
+        f"{'💸 Абонемент будет возвращён.' if hours_before > 24 else '⚠️ Меньше 24 часов до тренировки — абонемент не вернётся, средства уйдут в донат.'}"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Отменить", callback_data=f"confirm_cancel:{slot_id}"),
+            InlineKeyboardButton(text="❌ Назад", callback_data="cancel")
+        ]
+    ])
+
+    await callback.message.edit_text(text, reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("confirm_cancel:"))
+async def confirm_cancel_request(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT training_id FROM slots WHERE id = ? AND user_id = ?
+        """, (slot_id, user_id))
+        row = cursor.fetchone()
+
+        if not row:
+            await callback.answer("Запись не найдена", show_alert=True)
+            return
+
+        # Обновляем статус
+        cursor.execute("UPDATE slots SET status = 'pending_cancel' WHERE id = ?", (slot_id,))
+        conn.commit()
+
+    await callback.message.edit_text("⏳ Запрос на отмену отправлен. Ожидайте подтверждения от администратора.")
+
+# Уведомляем админов
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.user_id, s.group_name, s.channel, s.payment_type, t.date,
+                   u.nickname, u.system
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ?
+        """, (slot_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        for admin in ADMINS:
+            await callback.bot.send_message(admin, f"❌ Не удалось найти данные о слоте {slot_id}")
+        return
+
+    user_id, group, channel, payment_type, training_date, nickname, system = row
+    full_name = callback.from_user.full_name
+    username = callback.from_user.username
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
+
+    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
+
+    text = (
+        f"🔔 Запрос отмены записи:\n"
+        f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
+        f"📅 Дата: <b>{date_fmt}</b>\n"
+        f"🏁 Группа: <b>{group_label}</b>\n"
+        f"📡 Канал: <b>{channel}</b>\n"
+        f"🎮 OSD: <b>{nickname}</b>\n"
+        f"🎥 Видео: <b>{system}</b>\n"
+        f"{payment_text}\n"
+        f"⏳ Ожидает подтверждения отмены"
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Подтвердить отмену", callback_data=f"admin_cancel:{slot_id}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject_cancel:{slot_id}")
+    ]])
+
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+@router.callback_query(F.data.startswith("admin_cancel:"))
+async def admin_confirm_cancel(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_id, payment_type
+            FROM slots
+            WHERE id = ? AND status = 'pending_cancel'
+        """, (slot_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            await callback.answer("Запись не найдена или уже обработана.", show_alert=True)
+            return
+
+        user_id, payment_type = row
+
+        # Отменяем запись
+        cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
+        if payment_type == "subscription":
+            cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
+        conn.commit()
+
+    await callback.message.edit_text("✅ Запись отменена. Пользователь уведомлён.")
+    await callback.bot.send_message(user_id, "❌ Ваша запись отменена.\n🎟 Абонемент возвращён.")
+
+@router.callback_query(F.data.startswith("admin_reject_cancel:"))
+async def admin_reject_cancel(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE slots SET status = 'confirmed' WHERE id = ? AND status = 'pending_cancel'", (slot_id,))
+        if cursor.rowcount == 0:
+            await callback.answer("Запись не найдена или уже обработана.", show_alert=True)
+            return
+        conn.commit()
+
+    await callback.message.edit_text("❌ Отмена записи отклонена.")
