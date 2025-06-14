@@ -158,7 +158,14 @@ async def reserve_slot(callback: CallbackQuery):
     training_id = int(training_id)
     user_id = callback.from_user.id
     username = callback.from_user.username
-
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
+        row = cursor.fetchone()
+    if not row:
+        await callback.message.edit_text("❌ Ошибка: тренировка не найдена.")
+        return
+    date_str = row[0]  # <-- сохраняем дату
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
@@ -188,7 +195,7 @@ async def reserve_slot(callback: CallbackQuery):
     if payment_type == "subscription":
         await notify_admins_about_booking(
     callback.bot, training_id, user_id, group, channel, slot_id,
-    username, payment_type, callback.from_user.full_name
+    username, payment_type, callback.from_user.full_name, date_str
 )
         await callback.message.edit_text(
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
@@ -322,9 +329,11 @@ async def confirm_booking(callback: CallbackQuery):
     group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
+    
+    admin_name = callback.from_user.full_name
 
     admin_message = (
-        f"✅ Вы подтвердили запись:\n"
+        f"✅ Запись подтверждена админом <b>{admin_name}</b>:\n"
         f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
         f"📅 Дата: <b>{date_fmt}</b>\n"
         f"🏁 Группа: <b>{group_label}</b>\n"
@@ -334,7 +343,8 @@ async def confirm_booking(callback: CallbackQuery):
         f"{payment_text}"
     )
 
-    await callback.bot.send_message(callback.from_user.id, admin_message)
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("reject:"))
 async def reject_booking(callback: CallbackQuery):
@@ -415,13 +425,13 @@ async def show_my_bookings(message: Message):
         date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
         group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
         status_label = "⏳ Ожидает" if status == "pending" else "✅ Подтверждена"
-        lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}")
+        lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}\n\n")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отменить запись", callback_data="cancel_booking_menu")]
     ])
 
-    await message.answer("\n".join(lines), reply_markup=keyboard)
+    await message.answer("".join(lines), reply_markup=keyboard)
 
 #отмена тренировки
 
