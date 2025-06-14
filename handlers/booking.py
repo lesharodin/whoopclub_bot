@@ -413,6 +413,14 @@ async def reject_booking(callback: CallbackQuery):
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
     name = callback.from_user.full_name
+        # ✅ Получаем username и имя участника (не админа)
+    try:
+        chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+        full_name = chat_member.user.full_name
+        username = chat_member.user.username
+    except:
+        full_name = "Пользователь"
+        username = None
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
     admin_name = callback.from_user.full_name
     admin_message = (
