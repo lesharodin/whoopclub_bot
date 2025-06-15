@@ -468,8 +468,6 @@ async def reject_booking(callback: CallbackQuery):
                 await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
             except:
                 pass  # сообщение могло быть уже удалено или скрыто
-        for admin in ADMINS:
-            await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
         # Рассылка всем админам
         for admin in ADMINS:
             await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
