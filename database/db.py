@@ -27,7 +27,13 @@ def init_db():
                 status TEXT NOT NULL
             )
         """)
-
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admin_notifications (
+                slot_id INTEGER,
+                admin_id INTEGER,
+                message_id INTEGER
+            );
+        """)        
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS slots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

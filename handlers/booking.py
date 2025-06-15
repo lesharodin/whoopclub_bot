@@ -304,7 +304,15 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
     )
 
     for admin in ADMINS:
-        await bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+        msg = await bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+        # сохраняем id отправленного сообщения
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO admin_notifications (slot_id, admin_id, message_id)
+                VALUES (?, ?, ?)
+            """, (slot_id, admin, msg.message_id))
+            conn.commit()
 
 
 @router.callback_query(F.data.startswith("confirm:"))
@@ -369,7 +377,18 @@ async def confirm_booking(callback: CallbackQuery):
         f"🎥 Видео: <b>{system}</b>\n"
         f"{payment_text}"
     )
-
+    # Удаляем кнопки у всех админов
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+        messages = cursor.fetchall()
+        cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+        conn.commit()
+    for admin_id, message_id in messages:
+        try:
+            await callback.bot.edit_message_reply_markup(chat_id=admin_id, message_id=message_id, reply_markup=None)
+        except:
+            pass  # сообщение, возможно, уже удалено или скрыто
     for admin in ADMINS:
         await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
@@ -404,38 +423,52 @@ async def reject_booking(callback: CallbackQuery):
         cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
         conn.commit()
 
-    # Уведомление пользователя
-    await callback.message.edit_text("❌ Запись отклонена")
-    await callback.bot.send_message(user_id, "❌ Ваша запись была отклонена. Попробуйте снова или свяжитесь с админом.")
+        # Уведомление пользователя
+        await callback.message.edit_text("❌ Запись отклонена")
+        await callback.bot.send_message(user_id, "❌ Ваша запись была отклонена. Попробуйте снова или свяжитесь с админом.")
 
-    # Формируем лог для админа
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
-    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
-    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
-    name = callback.from_user.full_name
-        # ✅ Получаем username и имя участника (не админа)
-    try:
-        chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
-        full_name = chat_member.user.full_name
-        username = chat_member.user.username
-    except:
-        full_name = "Пользователь"
-        username = None
-    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
-    admin_name = callback.from_user.full_name
-    admin_message = (
-        f"❌ Запись отклонена админом <b>{admin_name}</b>:\n"
-        f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
-        f"📅 Дата: <b>{date_fmt}</b>\n"
-        f"🏁 Группа: <b>{group_label}</b>\n"
-        f"📡 Канал: <b>{channel}</b>\n"
-        f"🎮 OSD: <b>{nickname}</b>\n"
-        f"🎥 Видео: <b>{system}</b>\n"
-        f"{payment_text}"
-    )
+        # Получаем имя и username пользователя
+        try:
+            chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+            full_name = chat_member.user.full_name
+            username = chat_member.user.username
+        except:
+            full_name = "Пользователь"
+            username = None
 
-    for admin in ADMINS:
-        await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
+        user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
+        admin_name = callback.from_user.full_name
+
+        # Формируем лог для админов
+        group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+        date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+        payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
+
+        admin_message = (
+            f"❌ Запись отклонена админом <b>{admin_name}</b>:\n"
+            f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
+            f"📅 Дата: <b>{date_fmt}</b>\n"
+            f"🏁 Группа: <b>{group_label}</b>\n"
+            f"📡 Канал: <b>{channel}</b>\n"
+            f"🎮 OSD: <b>{nickname}</b>\n"
+            f"🎥 Видео: <b>{system}</b>\n"
+            f"{payment_text}"
+        )
+        # Удаляем кнопки у всех админов
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+            messages = cursor.fetchall()
+            cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+            conn.commit()
+        for admin_id, message_id in messages:
+            try:
+                await callback.bot.edit_message_reply_markup(chat_id=admin_id, message_id=message_id, reply_markup=None)
+            except:
+                pass  # сообщение, возможно, уже удалено или скрыто
+        # Рассылка всем админам
+        for admin in ADMINS:
+            await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
 @router.message(F.text.contains("Мои записи"))
 async def show_my_bookings(message: Message):
