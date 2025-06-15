@@ -651,13 +651,10 @@ async def confirm_cancel_request(callback: CallbackQuery):
             await callback.answer("Запись не найдена", show_alert=True)
             return
 
-        # Обновляем статус
         cursor.execute("UPDATE slots SET status = 'pending_cancel' WHERE id = ?", (slot_id,))
         conn.commit()
 
-    await callback.message.edit_text("⏳ Запрос на отмену отправлен. Ожидайте подтверждения от администратора.")
-
-# Уведомляем админов
+    # Получаем данные о слоте
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -671,8 +668,7 @@ async def confirm_cancel_request(callback: CallbackQuery):
         row = cursor.fetchone()
 
     if not row:
-        for admin in ADMINS:
-            await callback.bot.send_message(admin, f"❌ Не удалось найти данные о слоте {slot_id}")
+        await callback.message.edit_text("❌ Ошибка: данные не найдены.")
         return
 
     user_id, group, channel, payment_type, training_date, nickname, system = row
@@ -696,23 +692,38 @@ async def confirm_cancel_request(callback: CallbackQuery):
         f"⏳ Ожидает подтверждения отмены"
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
+    kb = InlineKeyboardMarkup(inline_keyboard=[[ 
         InlineKeyboardButton(text="✅ Подтвердить отмену", callback_data=f"admin_cancel:{slot_id}"),
         InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject_cancel:{slot_id}")
     ]])
 
+    # Только теперь — редактируем сообщение пользователя
+    await callback.message.edit_text("⏳ Запрос на отмену отправлен. Ожидайте подтверждения от администратора.")
+
+    # И после этого — уведомляем админов
     for admin in ADMINS:
-        await callback.bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+        msg = await callback.bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO admin_notifications (slot_id, admin_id, message_id)
+                VALUES (?, ?, ?)
+            """, (slot_id, admin, msg.message_id))
+            conn.commit()
 @router.callback_query(F.data.startswith("admin_cancel:"))
 async def admin_confirm_cancel(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
+    admin_name = callback.from_user.full_name
 
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT user_id, payment_type
-            FROM slots
-            WHERE id = ? AND status = 'pending_cancel'
+            SELECT s.user_id, s.payment_type, t.date, s.group_name, s.channel,
+                   u.nickname, u.system
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ? AND s.status = 'pending_cancel'
         """, (slot_id,))
         row = cursor.fetchone()
 
@@ -720,16 +731,61 @@ async def admin_confirm_cancel(callback: CallbackQuery):
             await callback.answer("Запись не найдена или уже обработана.", show_alert=True)
             return
 
-        user_id, payment_type = row
+        user_id, payment_type, training_date, group, channel, nickname, system = row
 
-        # Отменяем запись
+        # Удаляем слот и возвращаем абонемент
         cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
-        if payment_type == "subscription":
-            cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
+        cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
         conn.commit()
 
-    await callback.message.edit_text("✅ Запись отменена. Пользователь уведомлён.")
+        # Удаляем сообщения с кнопками отмены у всех админов
+        cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+        messages = cursor.fetchall()
+        cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+        conn.commit()
+
+    for admin_id, message_id in messages:
+        try:
+            await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
+        except:
+            pass
+
+    if callback.message:
+        try:
+            await callback.message.edit_text("✅ Запись отменена. Пользователь уведомлён.")
+        except:
+            pass
     await callback.bot.send_message(user_id, "❌ Ваша запись отменена.\n🎟 Абонемент возвращён.")
+
+    # Формируем лог админу
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
+    
+    try:
+        chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+        full_name = chat_member.user.full_name
+        username = chat_member.user.username
+    except:
+        full_name = "Пользователь"
+        username = None
+
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
+
+    admin_log = (
+        f"❎ Отмена подтверждена админом <b>{admin_name}</b>\n"
+        f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
+        f"📅 Дата: <b>{date_fmt}</b>\n"
+        f"🏁 Группа: <b>{group_label}</b>\n"
+        f"📡 Канал: <b>{channel}</b>\n"
+        f"🎮 OSD: <b>{nickname}</b>\n"
+        f"🎥 Видео: <b>{system}</b>\n"
+        f"{payment_text}"
+    )
+
+    for admin in ADMINS:
+        await callback.bot.send_message(admin, admin_log, parse_mode="HTML")
+
 
 @router.callback_query(F.data.startswith("admin_reject_cancel:"))
 async def admin_reject_cancel(callback: CallbackQuery):
