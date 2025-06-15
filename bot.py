@@ -5,6 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from handlers import registration, profile, admin, booking, participants, subscription
 from database.db import init_db
+from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -19,7 +20,9 @@ from database.db import init_db
 async def main():
     init_db()  # ⬅️ Этот вызов должен быть до всего остального!
     print("✅ Инициализация БД завершена")
-
+    # Добавляем middleware
+    dp.message.middleware(PrivateChatOnlyMiddleware(allowed_chat_commands={"/help", "/participants"}))
+    dp.callback_query.middleware(PrivateChatOnlyMiddleware())
     dp.include_router(registration.router)
     dp.include_router(profile.router)
     dp.include_router(admin.router)

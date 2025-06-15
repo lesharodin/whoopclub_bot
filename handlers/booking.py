@@ -59,8 +59,8 @@ async def show_available_trainings(message: Message):
 
 
 @router.callback_query(F.data.startswith("select_training:"))
-async def show_group_choice(callback: CallbackQuery):
-    training_id = int(callback.data.split(":")[1])
+async def show_group_choice(callback: CallbackQuery, training_id_override: int = None):
+    training_id = training_id_override or int(callback.data.split(":")[1])
     user_id = callback.from_user.id
 
     with get_connection() as conn:
@@ -103,7 +103,8 @@ async def show_group_choice(callback: CallbackQuery):
 
     date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    [
         InlineKeyboardButton(
             text=f"⚡ Быстрая ({fast_free})", 
             callback_data=f"book:{training_id}:fast"
@@ -112,13 +113,60 @@ async def show_group_choice(callback: CallbackQuery):
             text=f"🏁 Стандартная ({standard_free})", 
             callback_data=f"book:{training_id}:standard"
         )
-    ]])
+    ],
+    [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_trainings")]
+])
 
     await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
 
 
+#Кнопки Назад
+@router.callback_query(F.data == "back_to_trainings")
+async def back_to_trainings(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    now = datetime.now()
 
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
+        cutoff_date = (now - timedelta(hours=1)).isoformat()
+
+        cursor.execute("""
+            SELECT t.id, t.date,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked
+            FROM trainings t
+            WHERE t.status = 'open' AND datetime(t.date) > ?
+            ORDER BY t.date ASC
+            LIMIT 6
+        """, (user_id, cutoff_date))
+
+        trainings = cursor.fetchall()
+
+    if not trainings:
+        await callback.message.edit_text("❌ Пока нет открытых тренировок.")
+        return
+
+    total_slots = 12
+    keyboard = []
+    for training_id, date_str, booked_count, user_booked in trainings:
+        date_obj = datetime.fromisoformat(date_str)
+        weekday_label = "Вторник " if date_obj.weekday() == 1 else "Суббота " if date_obj.weekday() == 5 else ""
+        free_slots = total_slots - (booked_count or 0)
+        label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')} ({free_slots})"
+        if (user_booked or 0) > 0:
+            label += " ✅"
+        elif (booked_count or 0) >= total_slots:
+            label += " ❌"
+        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
+
+    await callback.message.edit_text("Выберите тренировку для записи:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+
+@router.callback_query(F.data.startswith("back_to_groups:"))
+async def back_to_groups(callback: CallbackQuery):
+    training_id = int(callback.data.split(":")[1])
+    await show_group_choice(callback=callback, training_id_override=training_id)
+#Бронирование
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
     _, training_id, group = callback.data.split(":")
@@ -160,9 +208,12 @@ async def choose_channel(callback: CallbackQuery):
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{group}:{ch}")]
-        for ch in available
+    [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{group}:{ch}")]
+    for ch in available
+    ] + [
+    [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_groups:{training_id}")]
     ])
+   
 
     await callback.message.edit_text(
         f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",

@@ -1,9 +1,10 @@
 from aiogram import Router, F
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from database.db import get_connection
 from keyboards.menu import get_main_keyboard
+from config import REQUIRED_CHAT_ID
 
 router = Router()
 
@@ -11,9 +12,27 @@ class Registration(StatesGroup):
     enter_nickname = State()
     select_system = State()
 
+#Для добычы id чата
+#@router.message()
+#async def debug_chat_id(message: Message):
+#    await message.answer(f"Chat ID: <code>{message.chat.id}</code>", parse_mode="HTML")
+
 @router.message(F.text == "/start")
 async def start_registration(message: Message, state: FSMContext):
     user_id = message.from_user.id
+
+    # 🔒 Проверка на членство в чате
+    try:
+        chat_member = await message.bot.get_chat_member(REQUIRED_CHAT_ID, user_id)
+        if chat_member.status in ("left", "kicked"):
+            raise ValueError("Not in group")
+    except:
+        await message.answer(
+            "❌ Чтобы зарегистрироваться, вступи в наш чат:\n"
+            "👉 https://t.me/+5B0lB4v2GAoyNjcy",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
 
     # Проверка регистрации
     with get_connection() as conn:
@@ -72,3 +91,22 @@ async def finish_registration(message: Message, state: FSMContext):
         f"🛠️ Система: {system}",
         reply_markup=get_main_keyboard()
     )
+    welcome_message = (
+    "👋 <b>Добро пожаловать в ВупКлуб!</b>\n\n"
+    "🏁 Через этого бота вы можете:\n"
+    "• 🗓 Записаться на тренировку\n"
+    "• 🎟 Купить абонемент\n"
+    "• 👥 Посмотреть участников тренировок\n"
+    "• 📊 Следить за активностью\n\n"
+    "📍 <b>Где проходят тренировки?</b>\n"
+    "🏢 Спортивный Комплекс Бутырский\n"
+    "📍 Адрес: ул. Яблочкова, д.3\n"
+    "🚶‍♂️ Ближайшее метро: <b>Дмитровская</b> (900 м)\n"
+    "🗺 <a href='https://yandex.ru/maps/?text=улица%20Яблочкова%203'>Открыть в Яндекс.Картах</a>\n\n"
+    "🕘 <b>Когда проходят тренировки?</b>\n"
+    "📅 Каждый <b>вторник в 19:00</b> и иногда в <b>субботу в 16:00</b>\n\n"
+    "👉 Актуальные тренировки доступны по кнопке <b>«Записаться»</b> в меню.\n\n"
+    "🚁 Добро пожаловать в сообщество дрон-рейсеров!"
+)
+
+    await message.answer(welcome_message, parse_mode="HTML")
