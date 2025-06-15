@@ -7,13 +7,15 @@ router = Router()
 
 @router.message(F.text.contains("Участники"))
 async def show_participants_list(message: Message):
+    now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date FROM trainings
-            WHERE status = 'open'
+            WHERE status = 'open' AND datetime(date) >= ?
             ORDER BY date ASC
-        """)
+        """, (now.isoformat(),))
         rows = cursor.fetchall()
 
     if not rows:
@@ -21,7 +23,10 @@ async def show_participants_list(message: Message):
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M"), callback_data=f"participants:{training_id}")]
+        [InlineKeyboardButton(
+            text=datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M"),
+            callback_data=f"participants:{training_id}"
+        )]
         for training_id, date_str in rows
     ])
 
