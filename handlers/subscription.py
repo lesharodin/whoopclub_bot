@@ -54,6 +54,7 @@ async def notify_admins(callback: CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>профиль</a>"
+    subscription_messages = {}  # глобально или в памяти FSMContext / хранилище
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -73,7 +74,7 @@ async def notify_admins(callback: CallbackQuery):
         f"📦 {count} тренировок\n"
         f"⏳ Ожидает подтверждения"
     )
-
+    
     for admin in ADMINS:
         await callback.bot.send_message(admin, text, reply_markup=kb)
 
@@ -124,6 +125,7 @@ async def confirm_subscription(callback: CallbackQuery):
 
     for admin in ADMINS:
         await callback.bot.send_message(admin, text, parse_mode="HTML")
+    await delete_admin_subscription_messages(callback.bot, subscription_id)
 
 
 
@@ -167,3 +169,22 @@ async def reject_subscription(callback: CallbackQuery):
 
     for admin in ADMINS:
         await callback.bot.send_message(admin, text, parse_mode="HTML")
+    await delete_admin_subscription_messages(callback.bot, subscription_id)
+
+
+from aiogram.exceptions import TelegramBadRequest
+
+async def delete_admin_subscription_messages(bot, subscription_id: int):
+    for admin_id in ADMINS:
+        try:
+            async for msg in bot.get_chat_history(admin_id, limit=30):
+                if msg.reply_markup:
+                    for row in msg.reply_markup.inline_keyboard:
+                        for btn in row:
+                            if btn.callback_data in {f"sub_ok:{subscription_id}", f"sub_reject:{subscription_id}"}:
+                                try:
+                                    await bot.delete_message(admin_id, msg.message_id)
+                                except TelegramBadRequest:
+                                    continue
+        except Exception:
+            continue
