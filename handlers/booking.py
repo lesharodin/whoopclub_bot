@@ -377,18 +377,19 @@ async def confirm_booking(callback: CallbackQuery):
         f"🎥 Видео: <b>{system}</b>\n"
         f"{payment_text}"
     )
-    # Удаляем кнопки у всех админов
+    # Удаляем сообщения с кнопками у всех админов
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
         messages = cursor.fetchall()
         cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
         conn.commit()
+
     for admin_id, message_id in messages:
         try:
-            await callback.bot.edit_message_reply_markup(chat_id=admin_id, message_id=message_id, reply_markup=None)
+            await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
         except:
-            pass  # сообщение, возможно, уже удалено или скрыто
+            pass  # сообщение могло быть уже удалено или скрыто
     for admin in ADMINS:
         await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
@@ -454,18 +455,21 @@ async def reject_booking(callback: CallbackQuery):
             f"🎥 Видео: <b>{system}</b>\n"
             f"{payment_text}"
         )
-        # Удаляем кнопки у всех админов
+        # Удаляем сообщения с кнопками у всех админов
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
             messages = cursor.fetchall()
             cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
             conn.commit()
+
         for admin_id, message_id in messages:
             try:
-                await callback.bot.edit_message_reply_markup(chat_id=admin_id, message_id=message_id, reply_markup=None)
+                await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
             except:
-                pass  # сообщение, возможно, уже удалено или скрыто
+                pass  # сообщение могло быть уже удалено или скрыто
+        for admin in ADMINS:
+            await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
         # Рассылка всем админам
         for admin in ADMINS:
             await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
