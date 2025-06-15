@@ -54,7 +54,6 @@ async def notify_admins(callback: CallbackQuery):
     user_id = callback.from_user.id
     username = callback.from_user.username
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>профиль</a>"
-    subscription_messages = {}  # глобально или в памяти FSMContext / хранилище
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -74,11 +73,19 @@ async def notify_admins(callback: CallbackQuery):
         f"📦 {count} тренировок\n"
         f"⏳ Ожидает подтверждения"
     )
-    
+
     for admin in ADMINS:
-        await callback.bot.send_message(admin, text, reply_markup=kb)
+        msg = await callback.bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO subscription_notifications (subscription_id, admin_id, message_id)
+                VALUES (?, ?, ?)
+            """, (subscription_id, admin, msg.message_id))
+            conn.commit()
 
     await callback.message.edit_text("🔔 Ожидайте подтверждения от администратора.")
+
 
 @router.callback_query(F.data.startswith("sub_ok:"))
 async def confirm_subscription(callback: CallbackQuery):
@@ -101,7 +108,7 @@ async def confirm_subscription(callback: CallbackQuery):
         if status != "pending":
             await callback.answer("⚠️ Эта подписка уже обработана.", show_alert=True)
             return
-
+        
         # Обновляем статус и абонементы
         cursor.execute("UPDATE subscriptions SET status = 'confirmed' WHERE id = ?", (subscription_id,))
         cursor.execute("UPDATE users SET subscription = COALESCE(subscription, 0) + ? WHERE user_id = ?", (count, user_id))
@@ -112,9 +119,18 @@ async def confirm_subscription(callback: CallbackQuery):
 
     await callback.message.edit_text("✅ Абонемент подтверждён")
     await callback.bot.send_message(user_id, f"✅ Оплата абонемента подтверждена. Вам доступно {sub_count} тренировок.")
-
-    username = callback.from_user.username
-    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{nickname or 'профиль'}</a>"
+    
+    # ✅ Получаем username и имя участника (не админа)
+    try:
+        chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+        full_name = chat_member.user.full_name
+        username = chat_member.user.username
+    except:
+        full_name = "Пользователь"
+        username = None
+    
+    
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
     text = (
         f"🎟 Абонемент подтверждён админом <b>{admin_name}</b>\n"
@@ -122,10 +138,22 @@ async def confirm_subscription(callback: CallbackQuery):
         f"📦 Добавлено: <b>{count}</b> тренировок\n"
         f"📊 Всего доступно: <b>{sub_count}</b>"
     )
+    # Удаление сообщений у всех админов
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT admin_id, message_id FROM subscription_notifications WHERE subscription_id = ?", (subscription_id,))
+        messages = cursor.fetchall()
+        cursor.execute("DELETE FROM subscription_notifications WHERE subscription_id = ?", (subscription_id,))
+        conn.commit()
 
+    for admin_id, message_id in messages:
+        try:
+            await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
+        except:
+            pass        
     for admin in ADMINS:
         await callback.bot.send_message(admin, text, parse_mode="HTML")
-    await delete_admin_subscription_messages(callback.bot, subscription_id)
+
 
 
 
@@ -158,33 +186,33 @@ async def reject_subscription(callback: CallbackQuery):
     await callback.message.edit_text("❌ Запрос отклонён")
     await callback.bot.send_message(user_id, "❌ Оплата не подтверждена. Попробуйте снова или свяжитесь с админом.")
 
-    username = callback.from_user.username
-    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{nickname}</a>"
+    # ✅ Получаем username и имя участника (не админа)
+    try:
+        chat_member = await callback.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+        full_name = chat_member.user.full_name
+        username = chat_member.user.username
+    except:
+        full_name = "Пользователь"
+        username = None
+    user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
     text = (
         f"🚫 Абонемент <b>отклонён</b> админом <b>{admin_name}</b>\n"
         f"👤 Пользователь: {user_link} (ID: <code>{user_id}</code>)\n"
         f"📦 Запрошено: <b>{count}</b> тренировок"
     )
+    # Удаление сообщений у всех админов
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT admin_id, message_id FROM subscription_notifications WHERE subscription_id = ?", (subscription_id,))
+        messages = cursor.fetchall()
+        cursor.execute("DELETE FROM subscription_notifications WHERE subscription_id = ?", (subscription_id,))
+        conn.commit()
 
+    for admin_id, message_id in messages:
+        try:
+            await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
+        except:
+            pass        
     for admin in ADMINS:
         await callback.bot.send_message(admin, text, parse_mode="HTML")
-    await delete_admin_subscription_messages(callback.bot, subscription_id)
-
-
-from aiogram.exceptions import TelegramBadRequest
-
-async def delete_admin_subscription_messages(bot, subscription_id: int):
-    for admin_id in ADMINS:
-        try:
-            async for msg in bot.get_chat_history(admin_id, limit=30):
-                if msg.reply_markup:
-                    for row in msg.reply_markup.inline_keyboard:
-                        for btn in row:
-                            if btn.callback_data in {f"sub_ok:{subscription_id}", f"sub_reject:{subscription_id}"}:
-                                try:
-                                    await bot.delete_message(admin_id, msg.message_id)
-                                except TelegramBadRequest:
-                                    continue
-        except Exception:
-            continue
