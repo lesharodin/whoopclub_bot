@@ -136,7 +136,17 @@ async def choose_channel(callback: CallbackQuery):
         return
 
     with get_connection() as conn:
+        
         cursor = conn.cursor()
+        # Получение даты тренировки
+        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            await callback.message.edit_text("❌ Тренировка не найдена.")
+            return
+
+        date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
         cursor.execute("""
             SELECT channel FROM slots
             WHERE training_id = ? AND group_name = ? AND status IN ('pending', 'confirmed')
@@ -155,7 +165,7 @@ async def choose_channel(callback: CallbackQuery):
     ])
 
     await callback.message.edit_text(
-        f"🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",
+        f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",
         reply_markup=keyboard
     )
 
@@ -345,9 +355,9 @@ async def confirm_booking(callback: CallbackQuery):
         if payment_type == "subscription":
             cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
         conn.commit()
-
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     await callback.message.edit_text("✅ Оплата подтверждена")
-    await callback.bot.send_message(user_id, "✅ Ваша запись подтверждена! Ждём вас на тренировке 🛸")
+    await callback.bot.send_message(user_id, f"✅ Ваша запись подтверждена! Ждём вас на тренировке {date_fmt}🛸")
 
     # ✅ Получаем username и имя участника (не админа)
     try:
