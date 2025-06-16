@@ -174,7 +174,7 @@ async def choose_channel(callback: CallbackQuery):
 
     # Новый список каналов для каждой группы
     GROUP_CHANNELS = {
-        "fast": ["R2", "F2", "F4", "R7", "R8"],
+        "fast": ["L1","R1","R2", "F2", "F4", "R7", "R8"],
         "standard": ["R1", "R2", "F2", "F4", "R7", "R8", "L1"]
     }
 
