@@ -155,7 +155,21 @@ async def create_training(callback: CallbackQuery):
 
     with get_connection() as conn:
         cursor = conn.cursor()
+        # Создание тренировки
         cursor.execute("INSERT INTO trainings (date, status) VALUES (?, ?)", (dt.isoformat(), "open"))
+        training_id = cursor.lastrowid
+        # Автоматическая запись двух админов
+        now = datetime.now().isoformat()
+        admin_slots = [
+            (training_id, 932407372, 'fast', 'R1'),
+            (training_id, 132536948, 'fast', 'L1')
+        ]
+        for training_id, admin_id, group, channel in admin_slots:
+            cursor.execute("""
+                INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at, payment_type)
+                VALUES (?, ?, ?, ?, 'confirmed', ?, 'admin')
+            """, (training_id, admin_id, group, channel, now))
+
         conn.commit()
 
     await callback.message.edit_text(f"✅ Тренировка создана на {dt.strftime('%d.%m.%Y %H:%M')}")

@@ -32,7 +32,7 @@ async def show_available_trainings(message: Message):
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    total_slots = 12  # 5 в fast + 7 в standard
+    total_slots = 14  # 7 в fast + 7 в standard
 
     keyboard = []
     for training_id, date_str, booked_count, user_booked in trainings:
@@ -86,7 +86,7 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
         """, (training_id,))
         counts = dict(cursor.fetchall())
 
-        fast_free = 5 - counts.get("fast", 0)
+        fast_free = 7 - counts.get("fast", 0)
         standard_free = 7 - counts.get("standard", 0)
 
         if fast_free + standard_free <= 0:
