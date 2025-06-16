@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
-from config import ADMINS, PAYMENT_LINK
+from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID
 from datetime import datetime, timedelta
 
 router = Router()
@@ -451,6 +451,29 @@ async def confirm_booking(callback: CallbackQuery):
             await callback.bot.delete_message(chat_id=admin_id, message_id=message_id)
         except:
             pass  # сообщение могло быть уже удалено или скрыто
+
+    # Подсчёт оставшихся мест
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = (SELECT training_id FROM slots WHERE id = ?) AND status IN ('pending', 'confirmed')
+        """, (slot_id,))
+        booked = cursor.fetchone()[0]
+    free_slots = 14 - booked
+
+    # Уведомление в клубный чат
+    if username:
+        display_name = f"@{username}"
+    else:
+        display_name = full_name
+
+    await callback.bot.send_message(
+        REQUIRED_CHAT_ID,
+        f"🛸 {display_name} записался на тренировку <b>{date_fmt}</b>\n"
+        f"Осталось мест: {free_slots}/12"
+    )
+        
     for admin in ADMINS:
         await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
 
