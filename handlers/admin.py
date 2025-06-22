@@ -380,7 +380,7 @@ async def admin_help(message: Message):
 
     await message.answer(help_text, parse_mode="HTML")
 #переотправка уведомлений    
-@admin_router.message(Command("resend_pending"))
+@router.message(Command("resend_pending"))
 async def resend_pending_handler(message: Message, bot: Bot):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав.")
