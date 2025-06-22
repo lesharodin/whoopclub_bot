@@ -422,6 +422,7 @@ async def resend_pending_handler(message: Message):
             username = None
 
         await notify_admins_about_booking(
+            bot=bot,
             training_id=training_id,
             user_id=user_id,
             group=group,
