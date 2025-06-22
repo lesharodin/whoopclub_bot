@@ -6,6 +6,8 @@ from config import BOT_TOKEN
 from handlers import registration, profile, admin, booking, participants, subscription
 from database.db import init_db
 from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
+from background_tasks import monitor_pending_slots
+
 
 bot = Bot(
     token=BOT_TOKEN,
@@ -29,10 +31,13 @@ async def main():
     dp.include_router(booking.router)
     dp.include_router(participants.router)
     dp.include_router(subscription.router)
+    dp.startup.register(on_startup)
     dp.include_router(admin.admin_router)\
 
     print("🚀 Бот запущен...")
     await dp.start_polling(bot)
+async def on_startup(bot: Bot):
+    asyncio.create_task(monitor_pending_slots(bot))
 
 if __name__ == "__main__":
     asyncio.run(main())
