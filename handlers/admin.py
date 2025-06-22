@@ -1,4 +1,4 @@
-from aiogram import Router, F
+from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
 from config import ADMINS
@@ -384,7 +384,7 @@ async def admin_help(message: Message):
 admin_router = Router()
 
 @admin_router.message(Command("resend_pending"))
-async def resend_pending_handler(message: Message):
+async def resend_pending_handler(message: Message, bot: Bot):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав.")
         return
