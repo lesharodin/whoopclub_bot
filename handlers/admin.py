@@ -379,57 +379,5 @@ async def admin_help(message: Message):
     )
 
     await message.answer(help_text, parse_mode="HTML")
-#переотправка уведомлений    
-@router.message(Command("resend_pending"))
-async def resend_pending_handler(message: Message, bot: Bot):
-    if message.from_user.id not in ADMINS:
-        await message.answer("❌ У тебя нет прав.")
-        return
-
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT s.id, s.training_id, s.user_id, s.group_name, s.channel, s.payment_type, s.created_at,
-                   t.date, u.nickname, u.system
-            FROM slots s
-            JOIN trainings t ON s.training_id = t.id
-            JOIN users u ON s.user_id = u.user_id
-            WHERE s.status = 'pending'
-              AND NOT EXISTS (
-                SELECT 1 FROM admin_notifications n WHERE n.slot_id = s.id
-              )
-        """)
-        slots = cursor.fetchall()
-
-    if not slots:
-        await message.answer("✅ Все уведомления отправлены. Ничего не найдено.")
-        return
-
-    sent_count = 0
-
-    for row in slots:
-        slot_id, training_id, user_id, group, channel, payment_type, _, training_date, _, _, = row
-
-        try:
-            chat_member = await bot.get_chat_member(chat_id=user_id, user_id=user_id)
-            username = chat_member.user.username
-            full_name = chat_member.user.full_name
-        except:
-            full_name = "Пользователь"
-            username = None
-
-        await notify_admins_about_booking(
-            bot=bot,
-            training_id=training_id,
-            user_id=user_id,
-            group=group,
-            channel=channel,
-            slot_id=slot_id,
-            username=username,
-            payment_type=payment_type,
-            full_name=full_name,
-            date_str=training_date
-        )
-        sent_count += 1
-
-    await message.answer(f"✅ Уведомления повторно отправлены по {sent_count} слоту(ам).")
+    
+    
