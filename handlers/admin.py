@@ -5,6 +5,7 @@ from config import ADMINS
 from database.db import get_connection
 from aiogram.filters.command import Command
 from aiogram.utils.markdown import hbold
+from handlers.booking import notify_admins_about_booking
 import calendar
 
 router = Router()
@@ -380,7 +381,9 @@ async def admin_help(message: Message):
 
     await message.answer(help_text, parse_mode="HTML")
 
-@router.message(Command("resend_pending"))
+admin_router = Router()
+
+@admin_router.message(Command("resend_pending"))
 async def resend_pending_handler(message: Message):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав.")
@@ -419,7 +422,6 @@ async def resend_pending_handler(message: Message):
             username = None
 
         await notify_admins_about_booking(
-            bot=bot,
             training_id=training_id,
             user_id=user_id,
             group=group,

@@ -29,6 +29,7 @@ async def main():
     dp.include_router(booking.router)
     dp.include_router(participants.router)
     dp.include_router(subscription.router)
+    dp.include_router(admin.admin_router)\
 
     print("🚀 Бот запущен...")
     await dp.start_polling(bot)
