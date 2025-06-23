@@ -97,3 +97,39 @@ async def check_and_send_progrev(bot: Bot):
                         await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
 
         await asyncio.sleep(60)  # проверяем каждую минуту
+full_trainings_sent = set()  # хранит training_id, по которым уже отправлено
+
+async def monitor_full_trainings(bot: Bot):
+    while True:
+        await asyncio.sleep(300)  # каждые 5 минут
+
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            # Все открытые тренировки
+            cursor.execute("""
+                SELECT id, date FROM trainings
+                WHERE status = 'open'
+            """)
+            trainings = cursor.fetchall()
+
+            for training_id, date_str in trainings:
+                if training_id in full_trainings_sent:
+                    continue
+
+                # Проверяем confirmed-записи по группам
+                cursor.execute("""
+                    SELECT group_name, COUNT(*)
+                    FROM slots
+                    WHERE training_id = ? AND status = 'confirmed'
+                    GROUP BY group_name
+                """, (training_id,))
+                counts = dict(cursor.fetchall())
+
+                if counts.get("fast", 0) >= 5 and counts.get("standard", 0) >= 7:
+                    date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m %H:%M")
+                    text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
+                    try:
+                        await bot.send_message(CLUB_CHAT_ID, text)
+                        full_trainings_sent.add(training_id)
+                    except Exception as e:
+                        print(f"[!] Ошибка при отправке уведомления о полной тренировке: {e}")
