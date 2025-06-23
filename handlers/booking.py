@@ -457,7 +457,7 @@ async def confirm_booking(callback: CallbackQuery):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT COUNT(*) FROM slots
-            WHERE training_id = (SELECT training_id FROM slots WHERE id = ?) AND status IN ('pending', 'confirmed')
+            WHERE training_id = (SELECT training_id FROM slots WHERE id = ?) AND status IN ('confirmed')
         """, (slot_id,))
         booked = cursor.fetchone()[0]
     free_slots = 14 - booked
