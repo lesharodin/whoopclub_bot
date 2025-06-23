@@ -125,7 +125,7 @@ async def monitor_full_trainings(bot: Bot):
                 """, (training_id,))
                 counts = dict(cursor.fetchall())
 
-                if counts.get("fast", 0) >= 5 and counts.get("standard", 0) >= 7:
+                if counts.get("fast", 0) >= 7 and counts.get("standard", 0) >= 7:
                     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m %H:%M")
                     text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
                     try:
