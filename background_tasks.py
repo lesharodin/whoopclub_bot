@@ -1,8 +1,8 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiogram import Bot
 from database.db import get_connection
-from config import ADMINS
+from config import ADMINS, REQUIRED_CHAT_ID
 from handlers.booking import notify_admins_about_booking
 
 async def monitor_pending_slots(bot: Bot):
@@ -35,3 +35,65 @@ async def monitor_pending_slots(bot: Bot):
                 print(f"[+] Переотправлено уведомление по записи {slot_id}")
             except Exception as e:
                 print(f"[!] Ошибка при переотправке записи {slot_id}: {e}")
+
+sent_progrev_for_dates = set()  # локальный кэш, чтобы не слать повторно
+
+async def check_and_send_progrev(bot: Bot):
+    while True:
+        now = datetime.now()
+
+        if now.hour == 13 and now.minute == 0:
+            tomorrow = now + timedelta(days=1)
+            date_only = tomorrow.date()
+
+            if date_only in sent_progrev_for_dates:
+                await asyncio.sleep(60)
+                continue
+
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, date FROM trainings
+                    WHERE status = 'open' AND DATE(date) = ?
+                    ORDER BY date ASC
+                    LIMIT 1
+                """, (date_only.isoformat(),))
+                row = cursor.fetchone()
+
+            if row:
+                training_id, training_date = row
+
+                with get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT group_name, COUNT(*) 
+                        FROM slots 
+                        WHERE training_id = ? AND status IN ('pending', 'confirmed')
+                        GROUP BY group_name
+                    """, (training_id,))
+                    counts = dict(cursor.fetchall())
+
+                fast_free = 5 - counts.get("fast", 0)
+                standard_free = 7 - counts.get("standard", 0)
+
+                fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
+                standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
+                date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+
+                text = (
+                    f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
+                    f"📅 <b>{date_fmt}</b>\n\n"
+                    f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
+                    f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+                    f"🚀 Успей записаться, пока есть места!"
+                )
+
+                try:
+                    await bot.send_message(chat_id=REQUIRED_CHAT_ID, text=text, parse_mode="HTML")
+                    sent_progrev_for_dates.add(date_only)
+                    print(f"[+] Сообщение про прогрев на {date_only} отправлено")
+                except Exception as e:
+                    for admin in ADMINS:
+                        await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
+
+        await asyncio.sleep(60)  # проверяем каждую минуту

@@ -6,7 +6,7 @@ from config import BOT_TOKEN
 from handlers import registration, profile, admin, booking, participants, subscription
 from database.db import init_db
 from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
-from background_tasks import monitor_pending_slots
+from background_tasks import monitor_pending_slots, check_and_send_progrev
 
 
 bot = Bot(
@@ -38,6 +38,7 @@ async def main():
     await dp.start_polling(bot)
 async def on_startup(bot: Bot):
     asyncio.create_task(monitor_pending_slots(bot))
+    asyncio.create_task(check_and_send_progrev(bot))
 
 if __name__ == "__main__":
     asyncio.run(main())

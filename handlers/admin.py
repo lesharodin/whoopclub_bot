@@ -1,7 +1,7 @@
 from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime, timedelta
-from config import ADMINS
+from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
 from aiogram.filters.command import Command
 from aiogram.utils.markdown import hbold
@@ -436,3 +436,53 @@ async def resend_pending_handler(message: Message, bot: Bot):
         sent_count += 1
 
     await message.answer(f"✅ Уведомления повторно отправлены по {sent_count} слоту(ам).")
+
+@admin_router.message(F.text == "/progrev")
+async def send_progrev_message(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    now = datetime.now()
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, date FROM trainings
+            WHERE status = 'open' AND datetime(date) > ?
+            ORDER BY datetime(date)
+            LIMIT 1
+        """, (now.isoformat(),))
+        training = cursor.fetchone()
+
+    if not training:
+        await message.answer("❌ Нет ближайших открытых тренировок.")
+        return
+
+    training_id, date_str = training
+    date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT group_name, COUNT(*) 
+            FROM slots 
+            WHERE training_id = ? AND status IN ('pending', 'confirmed')
+            GROUP BY group_name
+        """, (training_id,))
+        counts = dict(cursor.fetchall())
+
+    fast_free = 5 - counts.get("fast", 0)
+    standard_free = 7 - counts.get("standard", 0)
+    fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
+    standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
+
+    text = (
+        f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
+        f"📅 <b>{date_fmt}</b>\n\n"
+        f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
+        f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+        f"🚀 Успей записаться, пока есть места!"
+    )
+
+    await message.bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
+    await message.answer("✅ Сообщение прогрева отправлено в чат клуба.")
