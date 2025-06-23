@@ -129,7 +129,7 @@ async def monitor_full_trainings(bot: Bot):
                     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m %H:%M")
                     text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
                     try:
-                        await bot.send_message(CLUB_CHAT_ID, text)
+                        await bot.send_message(REQUIRED_CHAT_ID, text)
                         full_trainings_sent.add(training_id)
                     except Exception as e:
                         print(f"[!] Ошибка при отправке уведомления о полной тренировке: {e}")
