@@ -468,7 +468,7 @@ async def send_progrev_message(message: Message):
         cursor.execute("""
             SELECT group_name, COUNT(*) 
             FROM slots 
-            WHERE training_id = ? AND status IN ('pending', 'confirmed')
+            WHERE training_id = ? AND status IN ('confirmed')
             GROUP BY group_name
         """, (training_id,))
         counts = dict(cursor.fetchall())
