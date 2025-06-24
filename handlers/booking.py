@@ -9,7 +9,7 @@ router = Router()
 @router.message(F.text.contains("Записаться"))
 async def show_available_trainings(message: Message):
     user_id = message.from_user.id
-    now = datetime.now()
+    today = datetime.now().date()
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -24,7 +24,7 @@ async def show_available_trainings(message: Message):
             WHERE t.status = 'open' AND datetime(t.date) > ?
             ORDER BY t.date ASC
             LIMIT 6
-        """, (user_id, cutoff_date))
+        """, (user_id, today))
 
         trainings = cursor.fetchall()
 
