@@ -450,8 +450,8 @@ async def send_progrev_message(message: Message):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date FROM trainings
-            WHERE status = 'open' AND datetime(date) > ?
-            ORDER BY datetime(date)
+            WHERE status = 'open' AND date > ?
+            ORDER BY date
             LIMIT 1
         """, (now.isoformat(),))
         training = cursor.fetchone()
