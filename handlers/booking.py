@@ -9,22 +9,22 @@ router = Router()
 @router.message(F.text.contains("Записаться"))
 async def show_available_trainings(message: Message):
     user_id = message.from_user.id
-    today = datetime.now().date()
+    now = datetime.now()
 
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        #cutoff_date = (now - timedelta(hours=1)).isoformat()
+        cutoff_date = (now - timedelta(hours=1)).isoformat()
 
         cursor.execute("""
             SELECT t.id, t.date,
                 (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
                 (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked
             FROM trainings t
-            WHERE t.status = 'open' AND datetime(t.date) > ?
+            WHERE t.status = 'open' AND t.date > ?
             ORDER BY t.date ASC
             LIMIT 6
-        """, (user_id, today))
+        """, (user_id, cutoff_date))
 
         trainings = cursor.fetchall()
 
