@@ -7,15 +7,14 @@ router = Router()
 
 @router.message(F.text.contains("Участники"))
 async def show_participants_list(message: Message):
-    now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-
+    today = datetime.now().date()
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, date FROM trainings
             WHERE status = 'open' AND datetime(date) >= ?
             ORDER BY date ASC
-        """, (now.isoformat(),))
+        """, (today.isoformat(),))
         rows = cursor.fetchall()
 
     if not rows:
