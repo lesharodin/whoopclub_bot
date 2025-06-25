@@ -19,12 +19,13 @@ async def show_available_trainings(message: Message):
         cursor.execute("""
             SELECT t.id, t.date,
                 (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending_cancel')) AS user_pending
             FROM trainings t
             WHERE t.status = 'open' AND t.date > ?
             ORDER BY t.date ASC
             LIMIT 6
-        """, (user_id, cutoff_date))
+        """, (user_id, user_id, cutoff_date))
 
         trainings = cursor.fetchall()
 
@@ -35,7 +36,7 @@ async def show_available_trainings(message: Message):
     total_slots = 14  # 7 в fast + 7 в standard
 
     keyboard = []
-    for training_id, date_str, booked_count, user_booked in trainings:
+    for training_id, date_str, booked_count, user_booked, user_pending in trainings:
         date_obj = datetime.fromisoformat(date_str)
 
         weekday_label = ""
@@ -49,6 +50,8 @@ async def show_available_trainings(message: Message):
 
         if (user_booked or 0) > 0:
             label += " ✅"
+        elif (user_pending or 0) > 0:
+            label += " ⏳"
         elif (booked_count or 0) >= total_slots:
             label += " ❌"
 
@@ -69,7 +72,7 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
         # Проверка: уже записан?
         cursor.execute("""
             SELECT COUNT(*) FROM slots
-            WHERE training_id = ? AND user_id = ? AND status IN ('pending', 'confirmed')
+            WHERE training_id = ? AND user_id = ? AND status IN ('pending', 'confirmed', 'pending_cancel')
         """, (training_id, user_id))
         already = cursor.fetchone()[0]
 
@@ -227,7 +230,9 @@ async def reserve_slot(callback: CallbackQuery):
     training_id = int(training_id)
     user_id = callback.from_user.id
     username = callback.from_user.username
-    # Проверка: канал уже может быть занят
+    full_name = callback.from_user.full_name
+
+    # Проверка: канал занят
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -236,33 +241,29 @@ async def reserve_slot(callback: CallbackQuery):
         """, (training_id, group, channel))
         taken = cursor.fetchone()[0]
 
-    if taken:
-        await callback.answer("Этот канал уже занят другим участником.", show_alert=True)
-        return
-    with get_connection() as conn:
-        cursor = conn.cursor()
+        if taken:
+            await callback.answer("Этот канал уже занят другим участником.", show_alert=True)
+            return
+
+        # Получаем дату тренировки
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
         row = cursor.fetchone()
-    if not row:
-        await callback.message.edit_text("❌ Ошибка: тренировка не найдена.")
-        return
-    date_str = row[0]  # <-- сохраняем дату
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
-        row = cursor.fetchone()
-        date_fmt = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M") if row else "неизвестна"
-    with get_connection() as conn:
-        cursor = conn.cursor()
+        if not row:
+            await callback.message.edit_text("❌ Ошибка: тренировка не найдена.")
+            return
+
+        date_str = row[0]
+        date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
+
+        # Проверяем абонемент
         cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
-        sub = cursor.fetchone()
-        sub_count = sub[0] if sub else 0
+        sub_row = cursor.fetchone()
+        sub_count = sub_row[0] if sub_row else 0
 
-        if sub_count > 0:
-            payment_type = "subscription"
-        else:
-            payment_type = "manual"
+        payment_type = "subscription" if sub_count > 0 else "manual"
+        status = "confirmed" if payment_type == "subscription" else "pending"
 
+        # Регистрируем слот
         cursor.execute("""
             INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at, payment_type)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -271,23 +272,58 @@ async def reserve_slot(callback: CallbackQuery):
             user_id,
             group,
             channel,
-            "pending",
+            status,
             datetime.now().isoformat(),
             payment_type
         ))
         slot_id = cursor.lastrowid
+
+        # Списываем абонемент до commit
+        if payment_type == "subscription":
+            cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
+
         conn.commit()
 
     if payment_type == "subscription":
-        await notify_admins_about_booking(
-    callback.bot, training_id, user_id, group, channel, slot_id,
-    username, payment_type, callback.from_user.full_name, date_str
-)
+        # Подсчёт оставшихся мест
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM slots
+                WHERE training_id = ? AND status = 'confirmed'
+            """, (training_id,))
+            booked = cursor.fetchone()[0]
+            free_slots = 14 - booked
+
+            cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
+            sub_row = cursor.fetchone()
+            sub_left = sub_row[0] if sub_row else 0
+
         await callback.message.edit_text(
-            f"📅 <b> Тренировка {date_fmt}</b>\n"
+            f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
-            f"🎟 Оплата через абонемент. Ожидается подтверждение администратора."
+            f"<i>Оплата через абонемент. Запись подтверждена автоматически.</i>\n"
+            f"🎟 Осталось абонементов: <b>{sub_left}</b>"
         )
+
+        await callback.bot.send_message(
+            REQUIRED_CHAT_ID,
+            f"🛸 {'@' + username if username else full_name} записался на тренировку <b>{date_fmt}</b>\n"
+            f"Осталось мест: {free_slots}/12",
+            parse_mode="HTML"
+        )
+
+        for admin in ADMINS:
+            await callback.bot.send_message(
+                admin,
+                f"✅ {'@' + username if username else full_name} записался через абонемент:\n"
+                f"📅 {date_fmt}\n"
+                f"🏁 {'⚡ <b>Быстрая</b>' if group == 'fast' else '🏁 <b>Стандартная</b>'}\n"
+                f"📡 Канал: <b>{channel}</b>\n"
+                f"🎟 Осталось абонементов: <b>{sub_left}</b>",
+                parse_mode="HTML"
+            )
+
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"confirm_payment:{slot_id}")]
@@ -296,8 +332,10 @@ async def reserve_slot(callback: CallbackQuery):
             f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
             f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
-            f"После оплаты нажмите кнопку ниже.", reply_markup=keyboard
+            f"После оплаты нажмите кнопку ниже.",
+            reply_markup=keyboard
         )
+
 
 @router.callback_query(F.data.startswith("confirm_payment:"))
 async def confirm_manual_payment(callback: CallbackQuery):
@@ -742,7 +780,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT s.user_id, s.payment_type, t.date, s.group_name, s.channel,
-                   u.nickname, u.system
+                   u.nickname, u.system, t.id
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
             JOIN users u ON s.user_id = u.user_id
@@ -754,7 +792,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
             await callback.answer("Запись не найдена или уже обработана.", show_alert=True)
             return
 
-        user_id, payment_type, training_date, group, channel, nickname, system = row
+        user_id, payment_type, training_date, group, channel, nickname, system, training_id = row
 
         # Удаляем слот и возвращаем абонемент
         cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
@@ -779,7 +817,6 @@ async def admin_confirm_cancel(callback: CallbackQuery):
         except:
             pass
     await callback.bot.send_message(user_id, "❌ Ваша запись отменена.\n🎟 Абонемент возвращён.")
-
     # Формируем лог админу
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
@@ -804,6 +841,23 @@ async def admin_confirm_cancel(callback: CallbackQuery):
         f"🎮 OSD: <b>{nickname}</b>\n"
         f"🎥 Видео: <b>{system}</b>\n"
         f"{payment_text}"
+    )
+    # Подсчёт оставшихся мест
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND status = 'confirmed'
+        """, (training_id,))
+        booked = cursor.fetchone()[0]
+    free_slots = 14 - booked
+
+    # Уведомление в клубный чат
+    await callback.bot.send_message(
+        REQUIRED_CHAT_ID,
+        f"🚪 Освободилось место на тренировке <b>{date_fmt}</b>!\n"
+        f"Осталось мест: {free_slots}/12",
+        parse_mode="HTML"
     )
 
     for admin in ADMINS:
