@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_connection
-from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID
+from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID, CARD
 from datetime import datetime, timedelta
 
 router = Router()
@@ -326,15 +326,43 @@ async def reserve_slot(callback: CallbackQuery):
 
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"confirm_payment:{slot_id}")]
+            [
+                InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"confirm_payment:{slot_id}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data=f"user_cancel_pending:{slot_id}")
+            ]
         ])
+
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
             f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
+            f"Либо по номеру карты <code>{CARD}</code>\n"
             f"После оплаты нажмите кнопку ниже.",
             reply_markup=keyboard
         )
+@router.callback_query(F.data.startswith("user_cancel_pending:"))
+async def user_cancel_pending(callback: CallbackQuery):
+    slot_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Проверка: слот существует, принадлежит пользователю и в статусе pending
+        cursor.execute("""
+            SELECT training_id FROM slots
+            WHERE id = ? AND user_id = ? AND status = 'pending'
+        """, (slot_id, user_id))
+        row = cursor.fetchone()
+
+        if not row:
+            await callback.answer("Нельзя отменить: слот уже подтверждён или не найден.", show_alert=True)
+            return
+
+        # Удаляем слот
+        cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
+        conn.commit()
+
+    await callback.message.edit_text("❌ Ваша бронь отменена. Вы можете выбрать другую тренировку или группу.")
 
 
 @router.callback_query(F.data.startswith("confirm_payment:"))

@@ -1,7 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from database.db import get_connection
-from config import ADMINS, PAYMENT_LINK
+from config import ADMINS, PAYMENT_LINK, CARD
 from datetime import datetime
 
 router = Router()
@@ -38,12 +38,16 @@ async def process_subscription(callback: CallbackQuery):
         conn.commit()
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"sub_paid:{subscription_id}")]
+        [
+            InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"sub_paid:{subscription_id}"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data=f"user_cancel_sub:{subscription_id}")
+        ]
     ])
 
     await callback.message.edit_text(
         f"Вы выбрали абонемент на <b>{count}</b> тренировок за <b>{price}₽</b>.\n"
         f"💳 Оплатите по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n\n"
+        f"Либо по номеру карты <code>{CARD}</code>\n"
         f"После оплаты нажмите кнопку ниже:",
         reply_markup=kb
     )
@@ -86,6 +90,34 @@ async def notify_admins(callback: CallbackQuery):
 
     await callback.message.edit_text("🔔 Ожидайте подтверждения от администратора.")
 
+@router.callback_query(F.data.startswith("user_cancel_sub:"))
+async def user_cancel_subscription(callback: CallbackQuery):
+    subscription_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        # Проверяем, что запись принадлежит пользователю и ещё не подтверждена
+        cursor.execute("""
+            SELECT status FROM subscriptions
+            WHERE id = ? AND user_id = ?
+        """, (subscription_id, user_id))
+        row = cursor.fetchone()
+
+        if not row:
+            await callback.answer("❌ Подписка не найдена.", show_alert=True)
+            return
+
+        status = row[0]
+        if status != "pending":
+            await callback.answer("⚠️ Подписка уже подтверждена и не может быть отменена.", show_alert=True)
+            return
+
+        # Удаляем запись
+        cursor.execute("DELETE FROM subscriptions WHERE id = ?", (subscription_id,))
+        conn.commit()
+
+    await callback.message.edit_text("❌ Покупка абонемента отменена.")
 
 @router.callback_query(F.data.startswith("sub_ok:"))
 async def confirm_subscription(callback: CallbackQuery):

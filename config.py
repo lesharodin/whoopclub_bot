@@ -13,3 +13,4 @@ if not BOT_TOKEN:
 
 ADMINS = list(map(int, os.getenv("ADMINS", "").split()))
 PAYMENT_LINK = os.getenv("PAYMENT_LINK")
+CARD = os.getenv("CARD")
