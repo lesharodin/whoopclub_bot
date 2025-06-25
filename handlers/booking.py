@@ -641,7 +641,7 @@ async def show_my_bookings(message: Message):
         await message.answer("📭 У вас пока нет записей на тренировки.")
         return
 
-    lines = ["📅 Ваши записи на тренировки:\n"]
+    lines = ["📅 Ваши записи на тренировки:\n\n"]
     for date_str, group, channel, status in rows:
         date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
         group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"

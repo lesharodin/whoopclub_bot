@@ -46,7 +46,7 @@ async def process_subscription(callback: CallbackQuery):
 
     await callback.message.edit_text(
         f"Вы выбрали абонемент на <b>{count}</b> тренировок за <b>{price}₽</b>.\n"
-        f"💳 Оплатите по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n\n"
+        f"💳 Оплатите по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
         f"Либо по номеру карты <code>{CARD}</code>\n"
         f"После оплаты нажмите кнопку ниже:",
         reply_markup=kb
