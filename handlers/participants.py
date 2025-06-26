@@ -44,33 +44,32 @@ async def show_participants(callback: CallbackQuery):
         message_lines = [f"📅 Тренировка {pretty_date}\n"]
 
         for group_key, group_name in [("fast", "⚡ <b>Быстрая группа</b>"), ("standard", "🎽 <b>Стандартная группа</b>")]:
-            cursor.execute("""
-                SELECT s.channel, s.user_id, u.nickname, u.system
-                FROM slots s
-                LEFT JOIN users u ON s.user_id = u.user_id
-                WHERE s.training_id = ? AND s.group_name = ? AND s.status = 'confirmed'
-                ORDER BY s.channel ASC
-            """, (training_id, group_key))
-
-            rows = cursor.fetchall()
             message_lines.append(group_name)
 
-            if not rows:
-                message_lines.append("— Никого нет")
-                continue
+            CHANNEL_ORDER = ['R1', 'R2', 'F2', 'F4', 'R7', 'R8', 'L1']
+            for idx, channel in enumerate(CHANNEL_ORDER, 1):
+                cursor.execute("""
+                    SELECT s.user_id, u.nickname, u.system
+                    FROM slots s
+                    LEFT JOIN users u ON s.user_id = u.user_id
+                    WHERE s.training_id = ? AND s.group_name = ? AND s.status = 'confirmed' AND s.channel = ?
+                """, (training_id, group_key, channel))
+                result = cursor.fetchone()
 
-            for idx, (channel, user_id, nickname, system) in enumerate(rows, 1):
-                try:
-                    chat_member = await callback.bot.get_chat_member(user_id=user_id, chat_id=user_id)
-                    username = chat_member.user.username
-                    first_name = chat_member.user.first_name
-                except:
-                    username = None
-                    first_name = "профиль"
+                if result:
+                    user_id, nickname, system = result
+                    try:
+                        chat_member = await callback.bot.get_chat_member(user_id=user_id, chat_id=user_id)
+                        username = chat_member.user.username
+                        first_name = chat_member.user.first_name
+                    except:
+                        username = None
+                        first_name = "профиль"
 
-                user_link = f"@{username}" if username else f"<a href=\"tg://user?id={user_id}\">{first_name}</a>"
-                message_lines.append(f"{idx}. {channel} — {user_link} (OSD: {nickname or '-'}, VTX: {system or '-'})")
+                    user_link = f"@{username}" if username else f"<a href=\"tg://user?id={user_id}\">{first_name}</a>"
+                    message_lines.append(f"{idx}. {channel} — {user_link} (OSD: <code>{nickname or '-'}</code>, VTX: {system or '-'})")
+                else:
+                    message_lines.append(f"{idx}. {channel} — свободно")
 
-            message_lines.append("")
-
+            message_lines.append("")  # пустая строка между группами
     await callback.message.edit_text("\n".join(message_lines))
