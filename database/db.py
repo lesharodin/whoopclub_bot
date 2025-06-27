@@ -90,6 +90,7 @@ def init_db():
                 score_participation INTEGER,
                 score_dominance INTEGER,
                 score_total INTEGER,
+                score_final_total INTEGER,
 
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );

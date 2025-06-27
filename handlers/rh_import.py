@@ -1,49 +1,55 @@
 from aiogram import Router, Bot, F
-from aiogram.types import Message
-from aiogram.filters.command import Command
+from aiogram.types import Message, Document
 from config import ADMINS
 from database.db import get_connection
-from .rh_extract import process_race_db
+from handlers.rh_extract import process_race_db, extract_training_date
 
-from pathlib import Path
-import tempfile, aiofiles
+import tempfile
+import os
 
 router = Router()
 
-@router.message(Command("rh_import"))
-async def cmd_upload_results(message: Message):
-    if message.from_user.id not in ADMINS:
-        await message.reply("⛔ Только админы могут загружать результаты.")
-        return
-
-    await message.reply("📥 Отправь файл базы RotorHazard (.db) сообщением в ответ на это.")
-
 @router.message(F.document)
-async def handle_rh_database(message: Message, bot: Bot):
+async def handle_rh_db_file(message: Message, bot: Bot):
     if message.from_user.id not in ADMINS:
+        await message.answer("⛔️ Недостаточно прав для загрузки баз данных.")
         return
 
     doc = message.document
+
     if not doc.file_name.endswith(".db"):
-        await message.reply("⚠️ Это не .db файл.")
+        await message.answer("❌ Пожалуйста, отправь файл с расширением .db")
         return
 
+    await message.answer(f"🔄 Обрабатываем базу: {doc.file_name}...")
+
     try:
-        temp_path = Path(tempfile.gettempdir()) / doc.file_name
+        # Сохраняем файл во временное хранилище
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+            await bot.download(doc, destination=tmp.name)
+            file_path = tmp.name
 
-        # Получаем file_id → file_path
-        file_info = await bot.get_file(doc.file_id)
-        file_data = await bot.download_file(file_info.file_path)
+        # Извлекаем дату
+        training_date = extract_training_date(file_path)
 
-        # Сохраняем файл во временную директорию
-        async with aiofiles.open(temp_path, "wb") as f:
-            await f.write(file_data.read())
+        # Работаем с базой и закрываем соединение сразу после
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM training_scores WHERE training_date = ?", (training_date,))
+            if cursor.fetchone():
+                await message.answer(f"⚠️ База уже была загружена ранее ({training_date}), пропускаем.")
+                return
 
-        await message.reply("🔄 Обработка базы…")
+            await process_race_db(file_path, conn)
 
-        conn = get_connection()
-        await process_race_db(str(temp_path), conn)
+        await message.answer(f"✅ База {doc.file_name} ({training_date}) успешно обработана.")
 
-        await message.reply("✅ Результаты успешно обработаны.")
     except Exception as e:
-        await message.reply(f"❌ Ошибка при обработке:\n<pre>{e}</pre>", parse_mode="HTML")
+        await message.answer(f"❌ Ошибка при обработке:\n{e}")
+    finally:
+        import time
+        time.sleep(0.1)  # Короткая задержка, чтобы ОС освободила файл
+        try:
+            os.remove(file_path)
+        except PermissionError:
+            await message.answer("⚠️ Не удалось удалить временный файл — возможно, он ещё используется.")
