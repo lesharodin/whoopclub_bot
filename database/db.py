@@ -64,6 +64,36 @@ def init_db():
                 created_at TEXT
     )
 """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS training_scores (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                training_date TEXT NOT NULL,
+                user_id INTEGER,
+                pilot_name TEXT NOT NULL,
+                group_name TEXT,
+
+                best_lap REAL,
+                best_lap_race_id INTEGER,
+                best_lap_order INTEGER,
+
+                best_3_laps REAL,
+                best_3_race_id INTEGER,
+                best_3_start_order INTEGER,
+
+                total_laps INTEGER,
+                total_rounds INTEGER,
+                stability REAL,
+
+                score_best INTEGER,
+                score_3laps INTEGER,
+                score_total_laps INTEGER,
+                score_participation INTEGER,
+                score_dominance INTEGER,
+                score_total INTEGER,
+
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
 
 
     print("✅ Таблицы users, trainings и slots, subscription_usage созданы (если не существовали)")

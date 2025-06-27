@@ -3,7 +3,7 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
-from handlers import registration, profile, admin, booking, participants, subscription
+from handlers import registration, profile, admin, booking, participants, subscription, rh_import, rh_results
 from database.db import init_db
 from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
 from background_tasks import monitor_pending_slots, check_and_send_progrev, monitor_full_trainings
@@ -32,6 +32,8 @@ async def main():
     dp.include_router(participants.router)
     dp.include_router(subscription.router)
     dp.startup.register(on_startup)
+    dp.include_router(rh_import.router)
+    dp.include_router(rh_results.router)
     dp.include_router(admin.admin_router)\
 
     print("🚀 Бот запущен...")
