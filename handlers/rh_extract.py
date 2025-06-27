@@ -28,6 +28,7 @@ async def process_race_db(race_db_path: str, bot_db: sqlite3.Connection):
     heats = pd.read_sql("SELECT id, note FROM heat", rh)
     laps = pd.read_sql("SELECT pilot_id, race_id, lap_time_stamp, lap_time, deleted FROM saved_race_lap", rh)
     races = pd.read_sql("SELECT pilot_id, race_id FROM saved_pilot_race", rh)
+    races_meta = pd.read_sql("SELECT id AS race_id, round_id FROM saved_race_meta", rh)
 
     # Убираем deleted и первый круг (по времени в раунде)
     laps = laps[laps["deleted"] == 0].copy()
@@ -40,7 +41,10 @@ async def process_race_db(race_db_path: str, bot_db: sqlite3.Connection):
     pilot_data = pilots.merge(groups, left_on="id", right_on="pilot_id", how="left")
 
     # Дата тренировки по первой записи
-    training_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    training_date = pd.read_sql(
+    "SELECT MIN(date(start_time_formatted)) FROM saved_race_meta",
+    rh
+    ).iloc[0, 0]
 
     results = []
 
@@ -56,7 +60,8 @@ async def process_race_db(race_db_path: str, bot_db: sqlite3.Connection):
         # Лучший круг
         best_lap_row = pilot_laps.loc[pilot_laps["lap_time_sec"].idxmin()]
         best_lap = best_lap_row["lap_time_sec"]
-        best_lap_race_id = best_lap_row["race_id"]
+        race_id = best_lap_row["race_id"]
+        best_lap_round = races_meta.loc[races_meta["race_id"] == race_id, "round_id"].values[0]
         best_lap_order = best_lap_row["lap_order"] + 1
 
         # Лучшая серия из 3 подряд
@@ -69,7 +74,8 @@ async def process_race_db(race_db_path: str, bot_db: sqlite3.Connection):
             s = a + b + c
             if best_3_sum is None or s < best_3_sum:
                 best_3_sum = s
-                best_3_race_id = pilot_laps_sorted.loc[i, "race_id"]
+                race_id_3 = pilot_laps_sorted.loc[i, "race_id"]
+                best_3_round = races_meta.loc[races_meta["race_id"] == race_id_3, "round_id"].values[0]
                 best_3_start = pilot_laps_sorted.loc[i, "lap_order"] + 1
 
         total_laps = len(pilot_laps)
@@ -82,10 +88,10 @@ async def process_race_db(race_db_path: str, bot_db: sqlite3.Connection):
             "pilot_name": pname,
             "group": group,
             "best_lap": best_lap,
-            "best_lap_race_id": best_lap_race_id,
+            "best_lap_race_id": best_lap_round,  # ✅ теперь правильно
             "best_lap_order": best_lap_order,
             "best_3_laps": best_3_sum,
-            "best_3_race_id": best_3_race_id,
+            "best_3_race_id": best_3_round,     # ✅ теперь правильно
             "best_3_start_order": best_3_start,
             "total_laps": total_laps,
             "total_rounds": total_rounds,
