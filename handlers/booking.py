@@ -388,8 +388,11 @@ async def confirm_manual_payment(callback: CallbackQuery):
     training_id, group, channel, date_str = row
 
     await notify_admins_about_booking(
-        callback.bot, training_id, user_id, group, channel, slot_id,
-        username, "manual", callback.from_user.full_name, date_str
+    callback.bot, training_id, user_id, group, channel, slot_id,
+    username=username,
+    payment_type="manual",
+    full_name=callback.from_user.full_name,
+    date_str=date_str
     )
 
     await callback.message.edit_text("🔔 Администратор уведомлён. Ожидайте подтверждения оплаты.")
