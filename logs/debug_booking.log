@@ -1,0 +1,31 @@
+2025-07-04 17:35:04,435 [INFO] Start polling
+2025-07-04 17:35:04,785 [INFO] Run polling for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
+2025-07-04 17:35:19,598 [INFO] Update id=171698387 is handled. Duration 520 ms by bot id=7869843510
+2025-07-04 17:35:23,725 [INFO] Update id=171698388 is handled. Duration 105 ms by bot id=7869843510
+2025-07-04 17:35:28,380 [INFO] Update id=171698389 is handled. Duration 122 ms by bot id=7869843510
+2025-07-04 17:35:29,769 [INFO] Update id=171698390 is handled. Duration 215 ms by bot id=7869843510
+2025-07-04 17:35:38,024 [INFO] Update id=171698391 is handled. Duration 180 ms by bot id=7869843510
+2025-07-04 17:35:39,126 [INFO] Update id=171698392 is handled. Duration 98 ms by bot id=7869843510
+2025-07-04 17:35:40,287 [INFO] Update id=171698393 is handled. Duration 147 ms by bot id=7869843510
+2025-07-04 17:35:41,981 [INFO] Update id=171698394 is handled. Duration 143 ms by bot id=7869843510
+2025-07-04 17:35:46,479 [INFO] [confirm_manual_payment] callback.from_user
+2025-07-04 17:35:46,479 [INFO]   slot_id: 6
+2025-07-04 17:35:46,479 [INFO]   user_id: 246535
+2025-07-04 17:35:46,479 [INFO]   username: lesharodin
+2025-07-04 17:35:46,479 [INFO]   full_name: ʟᴇsʜᴀ ʀᴏᴅɪɴ
+2025-07-04 17:35:46,481 [INFO] [confirm_manual_payment] данные из базы:
+2025-07-04 17:35:46,481 [INFO]   training_id: 2
+2025-07-04 17:35:46,481 [INFO]   group: fast
+2025-07-04 17:35:46,481 [INFO]   channel: R2
+2025-07-04 17:35:46,481 [INFO]   date_str: 2025-07-08T19:00:00
+2025-07-04 17:35:46,481 [INFO] [notify_admins_about_booking]
+2025-07-04 17:35:46,482 [INFO]   user_id: 246535
+2025-07-04 17:35:46,482 [INFO]   username: lesharodin
+2025-07-04 17:35:46,482 [INFO]   full_name: ʟᴇsʜᴀ ʀᴏᴅɪɴ
+2025-07-04 17:35:46,482 [INFO]   date_str: 2025-07-08T19:00:00
+2025-07-04 17:35:46,784 [INFO] Update id=171698395 is handled. Duration 306 ms by bot id=7869843510
+2025-07-04 17:36:11,511 [INFO] Update id=171698396 is handled. Duration 1031 ms by bot id=7869843510
+2025-07-04 17:36:28,928 [INFO] Update id=171698397 is not handled. Duration 2 ms by bot id=7869843510
+2025-07-04 17:36:30,949 [INFO] Update id=171698398 is not handled. Duration 2 ms by bot id=7869843510
+2025-07-04 17:36:44,013 [INFO] Polling stopped
+2025-07-04 17:36:44,270 [INFO] Polling stopped for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
