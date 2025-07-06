@@ -7,7 +7,7 @@ from handlers.booking import notify_admins_about_booking
 
 async def monitor_pending_slots(bot: Bot):
     while True:
-        await asyncio.sleep(300)  # Каждые 5 минут
+        await asyncio.sleep(900)  # Каждые 5 минут
 
         with get_connection() as conn:
             cursor = conn.cursor()
