@@ -95,7 +95,7 @@ async def check_and_send_progrev(bot: Bot):
                     """, (training_id,))
                     counts = dict(cursor.fetchall())
 
-                fast_free = 5 - counts.get("fast", 0)
+                fast_free = 7 - counts.get("fast", 0)
                 standard_free = 7 - counts.get("standard", 0)
 
                 fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
