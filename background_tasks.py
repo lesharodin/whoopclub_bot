@@ -130,7 +130,7 @@ async def monitor_full_trainings(bot: Bot):
             # Все открытые тренировки
             cursor.execute("""
                 SELECT id, date FROM trainings
-                WHERE status = 'open'
+                WHERE status = 'open' AND full_message_sent = 0
             """)
             trainings = cursor.fetchall()
 
@@ -152,6 +152,7 @@ async def monitor_full_trainings(bot: Bot):
                     text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
                     try:
                         await bot.send_message(REQUIRED_CHAT_ID, text)
-                        full_trainings_sent.add(training_id)
+                        cursor.execute("UPDATE trainings SET full_message_sent = 1 WHERE id = ?", (training_id,))
+                        conn.commit()
                     except Exception as e:
                         print(f"[!] Ошибка при отправке уведомления о полной тренировке: {e}")
