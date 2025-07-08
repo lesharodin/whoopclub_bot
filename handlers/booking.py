@@ -851,9 +851,22 @@ async def admin_confirm_cancel(callback: CallbackQuery):
 
         user_id, payment_type, training_date, group, channel, nickname, system, training_id = row
 
-        # Удаляем слот и возвращаем абонемент
+        # Считаем, сколько часов до тренировки
+        now = datetime.now()
+        training_dt = datetime.fromisoformat(training_date)
+        hours_before = (training_dt - now).total_seconds() / 3600
+
+        # Удаляем слот
         cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
-        cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
+
+        # Возвращаем абонемент только если больше 24 часов
+        refund_text = ""
+        if hours_before > 24:
+            cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
+            refund_text = "🎟 Абонемент возвращён."
+        else:
+            refund_text = "💸 Меньше 24 часов — абонемент не возвращается, средства ушли в донат клуба."
+
         conn.commit()
 
         # Удаляем сообщения с кнопками отмены у всех админов
@@ -873,7 +886,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
             await callback.message.edit_text("✅ Запись отменена. Пользователь уведомлён.")
         except:
             pass
-    await callback.bot.send_message(user_id, "❌ Ваша запись отменена.\n🎟 Абонемент возвращён.")
+    await callback.bot.send_message(user_id, f"❌ Ваша запись отменена.\n{refund_text}")
     # Формируем лог админу
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"

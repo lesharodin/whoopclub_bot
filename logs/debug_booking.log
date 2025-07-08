@@ -64,3 +64,15 @@
 2025-07-08 14:15:32,590 [INFO] Connection established (tryings = 1, bot id = 7869843510)
 2025-07-08 14:16:54,551 [INFO] Polling stopped
 2025-07-08 14:16:54,815 [INFO] Polling stopped for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
+2025-07-08 14:58:23,926 [INFO] Start polling
+2025-07-08 14:58:24,245 [INFO] Run polling for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
+2025-07-08 14:58:27,060 [INFO] Update id=171698462 is handled. Duration 532 ms by bot id=7869843510
+2025-07-08 14:58:31,158 [INFO] Update id=171698463 is handled. Duration 117 ms by bot id=7869843510
+2025-07-08 14:58:32,114 [INFO] Update id=171698464 is handled. Duration 161 ms by bot id=7869843510
+2025-07-08 14:58:33,518 [INFO] Update id=171698465 is handled. Duration 312 ms by bot id=7869843510
+2025-07-08 14:58:36,542 [INFO] Update id=171698466 is handled. Duration 267 ms by bot id=7869843510
+2025-07-08 14:58:39,380 [INFO] Update id=171698467 is handled. Duration 673 ms by bot id=7869843510
+2025-07-08 14:58:48,586 [INFO] Polling stopped
+2025-07-08 14:58:48,784 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 1] [SSL: APPLICATION_DATA_AFTER_CLOSE_NOTIFY] application data after close notify (_ssl.c:2765)
+2025-07-08 14:58:48,784 [WARNING] Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 7869843510)
+2025-07-08 14:58:48,851 [INFO] Polling stopped for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
