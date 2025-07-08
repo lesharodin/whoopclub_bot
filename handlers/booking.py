@@ -3,6 +3,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKe
 from database.db import get_connection
 from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID, CARD
 from datetime import datetime, timedelta
+from logging_config import logger
+
 
 router = Router()
 
@@ -370,7 +372,13 @@ async def confirm_manual_payment(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
     user_id = callback.from_user.id
     username = callback.from_user.username
-
+    full_name = callback.from_user.full_name
+    
+    logger.info("[confirm_manual_payment] callback.from_user")
+    logger.info(f"  slot_id: {slot_id}")
+    logger.info(f"  user_id: {user_id}")
+    logger.info(f"  username: {username}")
+    logger.info(f"  full_name: {full_name}")
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -386,15 +394,36 @@ async def confirm_manual_payment(callback: CallbackQuery):
         return
 
     training_id, group, channel, date_str = row
-
+    logger.info("[confirm_manual_payment] данные из базы:")
+    logger.info(f"  training_id: {training_id}")
+    logger.info(f"  group: {group}")
+    logger.info(f"  channel: {channel}")
+    logger.info(f"  date_str: {date_str}")
     await notify_admins_about_booking(
-        callback.bot, training_id, user_id, group, channel, slot_id,
-        username, "manual", callback.from_user.full_name, date_str
+        bot=callback.bot,
+        training_id=training_id,
+        user_id=user_id,
+        group=group,
+        channel=channel,
+        slot_id=slot_id,
+        username=username,
+        payment_type="manual",
+        full_name=callback.from_user.full_name,
+        date_str=date_str
     )
 
     await callback.message.edit_text("🔔 Администратор уведомлён. Ожидайте подтверждения оплаты.")
 
 async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username, payment_type, full_name, date_str):
+    logger.info("[notify_admins_about_booking]")
+    logger.info(f"  user_id: {user_id}")
+    logger.info(f"  username: {username}")
+    logger.info(f"  full_name: {full_name}")
+    logger.info(f"  date_str: {date_str}")
+
+    if username and "20" in username and ":" in username:
+        logger.warning(f"⚠️ ПОДОЗРИТЕЛЬНЫЙ USERNAME: {username} — похоже, это дата!")
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT nickname, system, subscription FROM users WHERE user_id = ?", (user_id,))

@@ -7,30 +7,52 @@ from handlers.booking import notify_admins_about_booking
 
 async def monitor_pending_slots(bot: Bot):
     while True:
-        await asyncio.sleep(300)  # Каждые 5 минут
+        await asyncio.sleep(900)  # Каждые 5 минут
 
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT s.id, s.training_id, s.user_id, s.group_name, s.channel, s.payment_type, s.created_at,
-                    t.date, u.nickname, u.system
+                       t.date, u.nickname, u.system
                 FROM slots s
                 JOIN trainings t ON s.training_id = t.id
                 JOIN users u ON s.user_id = u.user_id
                 WHERE s.status = 'pending'
                 AND NOT EXISTS (
                     SELECT 1 FROM admin_notifications n WHERE n.slot_id = s.id
-                  )
+                )
             """)
             pending = cursor.fetchall()
 
         for slot in pending:
-            slot_id, training_id, user_id, group, channel, payment_type, date_str, username, system, nickname = slot
+            (
+                slot_id,
+                training_id,
+                user_id,
+                group,
+                channel,
+                payment_type,
+                created_at,
+                training_date,
+                nickname,
+                system,
+            ) = slot
+
+            username = None  # username здесь из базы не получается
             full_name = nickname or system or "Пользователь"
+
             try:
                 await notify_admins_about_booking(
-                    bot, training_id, user_id, group, channel, slot_id,
-                    username, payment_type, full_name, date_str
+                    bot=bot,
+                    training_id=training_id,
+                    user_id=user_id,
+                    group=group,
+                    channel=channel,
+                    slot_id=slot_id,
+                    username=username,
+                    payment_type=payment_type,
+                    full_name=full_name,
+                    date_str=training_date,
                 )
                 print(f"[+] Переотправлено уведомление по записи {slot_id}")
             except Exception as e:
@@ -73,7 +95,7 @@ async def check_and_send_progrev(bot: Bot):
                     """, (training_id,))
                     counts = dict(cursor.fetchall())
 
-                fast_free = 5 - counts.get("fast", 0)
+                fast_free = 7 - counts.get("fast", 0)
                 standard_free = 7 - counts.get("standard", 0)
 
                 fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
