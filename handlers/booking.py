@@ -696,7 +696,7 @@ async def show_user_bookings_to_cancel(callback: CallbackQuery):
             SELECT s.id, t.date
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
-            WHERE s.user_id = ? AND s.status = 'confirmed' AND datetime(t.date) > ? AND t.status != 'cancelled'
+            WHERE s.user_id = ? AND s.status = 'confirmed' AND t.date > ? AND t.status != 'cancelled'
             ORDER BY t.date ASC
         """, (user_id, now.isoformat()))
         bookings = cursor.fetchall()

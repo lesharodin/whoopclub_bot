@@ -29,3 +29,38 @@
 2025-07-04 17:36:30,949 [INFO] Update id=171698398 is not handled. Duration 2 ms by bot id=7869843510
 2025-07-04 17:36:44,013 [INFO] Polling stopped
 2025-07-04 17:36:44,270 [INFO] Polling stopped for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
+2025-07-08 08:59:58,752 [INFO] Start polling
+2025-07-08 08:59:59,081 [INFO] Run polling for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
+2025-07-08 08:59:59,261 [INFO] Update id=171698452 is handled. Duration 17 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698449 is not handled. Duration 23 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698447 is not handled. Duration 23 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698448 is not handled. Duration 23 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698434 is not handled. Duration 26 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698435 is not handled. Duration 26 ms by bot id=7869843510
+2025-07-08 08:59:59,267 [INFO] Update id=171698436 is not handled. Duration 26 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698438 is not handled. Duration 26 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698439 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698440 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698442 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698443 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698444 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,268 [INFO] Update id=171698445 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,269 [INFO] Update id=171698446 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,269 [INFO] Update id=171698451 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,269 [INFO] Update id=171698454 is not handled. Duration 24 ms by bot id=7869843510
+2025-07-08 08:59:59,269 [INFO] Update id=171698450 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,269 [INFO] Update id=171698441 is not handled. Duration 27 ms by bot id=7869843510
+2025-07-08 08:59:59,270 [INFO] Update id=171698437 is not handled. Duration 28 ms by bot id=7869843510
+2025-07-08 08:59:59,270 [INFO] Update id=171698455 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 08:59:59,270 [INFO] Update id=171698453 is not handled. Duration 25 ms by bot id=7869843510
+2025-07-08 09:00:17,976 [INFO] Update id=171698456 is handled. Duration 4399 ms by bot id=7869843510
+2025-07-08 09:00:26,708 [INFO] Update id=171698457 is handled. Duration 261 ms by bot id=7869843510
+2025-07-08 09:00:27,660 [INFO] Update id=171698458 is handled. Duration 105 ms by bot id=7869843510
+2025-07-08 09:00:31,063 [INFO] Update id=171698459 is handled. Duration 297 ms by bot id=7869843510
+2025-07-08 09:17:59,027 [INFO] Update id=171698460 is handled. Duration 152 ms by bot id=7869843510
+2025-07-08 09:18:06,671 [INFO] Update id=171698461 is handled. Duration 294 ms by bot id=7869843510
+2025-07-08 14:15:21,292 [ERROR] Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+2025-07-08 14:15:21,294 [WARNING] Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 7869843510)
+2025-07-08 14:15:32,590 [INFO] Connection established (tryings = 1, bot id = 7869843510)
+2025-07-08 14:16:54,551 [INFO] Polling stopped
+2025-07-08 14:16:54,815 [INFO] Polling stopped for bot @whoopclub_helper_bot id=7869843510 - 'ВУП-КЛУБ ТЕСТОВЫЙ БОТ'
