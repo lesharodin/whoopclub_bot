@@ -1,5 +1,7 @@
 from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime, timedelta
 from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
@@ -9,7 +11,22 @@ from handlers.booking import notify_admins_about_booking
 import calendar
 
 router = Router()
+MAX_LEN = 4096  # лимит Telegram
 
+def chunk_text_by_lines(text: str, limit: int = MAX_LEN):
+    """Режет текст по строкам так, чтобы не превышать лимит"""
+    parts, cur, cur_len = [], [], 0
+    for line in text.splitlines():
+        add = len(line) + 1  # строка + \n
+        if cur_len + add > limit:
+            parts.append("\n".join(cur))
+            cur, cur_len = [line], add
+        else:
+            cur.append(line)
+            cur_len += add
+    if cur:
+        parts.append("\n".join(cur))
+    return parts
 
 def get_existing_training_dates() -> set[str]:
     """Получает даты только открытых тренировок (без времени) в формате 'YYYY-MM-DD'."""
@@ -78,8 +95,7 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
 async def get_id(message: Message):
     await message.answer(f"🪪 Твой Telegram ID: <code>{message.from_user.id}</code>")
 
-#Список пользователей
-
+# Список пользователей
 @router.message(F.text == "/users")
 async def list_users(message: Message):
     if message.from_user.id not in ADMINS:
@@ -102,21 +118,32 @@ async def list_users(message: Message):
     lines = ["📋 Список пользователей:\n"]
     for user_id, nickname, system, subscription in users:
         # Пытаемся получить username и полное имя
-        chat_member = await message.bot.get_chat_member(chat_id=user_id, user_id=user_id)
-        full_name = chat_member.user.full_name
-        username = chat_member.user.username
+        try:
+            chat_member = await message.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+            full_name = chat_member.user.full_name
+            username = chat_member.user.username
+        except Exception:
+            full_name, username = "—", None
 
         user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
         lines.append(
             f"{user_link} | ID: <code>{user_id}</code>\n"
-            f"🎮 OSD: {nickname}\n"
-            f"🎥 Система: {system}\n"
-            f"🎟 Абонементов: {subscription}\n"
+            f"🎮 OSD: {nickname or '—'}\n"
+            f"🎥 Система: {system or '—'}\n"
+            f"🎟 Абонементов: {subscription if subscription is not None else 0}\n"
             f"---"
         )
 
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    text = "\n".join(lines)
+
+    # Отправляем частями, если список слишком длинный
+    for i, chunk in enumerate(chunk_text_by_lines(text)):
+        try:
+            await message.answer(chunk, parse_mode=ParseMode.HTML)
+        except TelegramBadRequest:
+            # fallback — отправляем как обычный текст
+            await message.answer(chunk)
 
 # Создание тренировок
 @router.message(F.text == "/new_training")
