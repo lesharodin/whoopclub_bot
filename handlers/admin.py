@@ -5,7 +5,7 @@ from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime, timedelta
 from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
-from aiogram.filters.command import Command
+from aiogram.filters.command import Command, CommandObject
 from aiogram.utils.markdown import hbold
 from handlers.booking import notify_admins_about_booking
 import calendar
@@ -517,42 +517,50 @@ async def send_progrev_message(message: Message):
     await message.answer("✅ Сообщение прогрева отправлено в чат клуба.")
 
 @admin_router.message(Command("announce"))
-async def announce_handler(message: Message, bot: Bot):
+async def announce_handler(message: Message, bot: Bot, command: CommandObject):
+    # доступ только админам
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
         return
 
-    args_text = message.get_args().strip()
+    # текст после команды (aiogram v3)
+    args_text = (command.args or "").strip()
 
-    # Вариант 1: есть текст после команды — шлём текст (режем на части)
+    # Вариант 1: есть текст — шлём как HTML, режем на части
     if args_text:
-        parts = chunk_text_by_lines(args_text)  # у тебя уже есть эта функция
-        sent = 0
+        parts = chunk_text_by_lines(args_text)  # твоя функция уже есть
         for chunk in parts:
-            # По умолчанию HTML, предпросмотр ссылок выключен
             await bot.send_message(
                 chat_id=REQUIRED_CHAT_ID,
                 text=chunk,
                 parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True
+                disable_web_page_preview=True,
             )
-            sent += 1
-        await message.answer(f"✅ Отправлено в чат клуба ({sent} сообщ.).")
+        await message.answer(f"✅ Сообщение отправлено в чат клуба ({len(parts)} частью/частями).")
         return
 
-    # Вариант 2: без аргументов, но команда как reply — копируем исходное сообщение (с медиа)
+    # Вариант 2: нет текста, но команда в reply — копируем исходное сообщение «как есть»
     if message.reply_to_message:
         try:
-            await message.reply_to_message.copy_to(REQUIRED_CHAT_ID)
+            # 1) пробуем «удобный» метод, если он есть в текущей версии
+            if hasattr(message.reply_to_message, "copy_to"):
+                await message.reply_to_message.copy_to(REQUIRED_CHAT_ID)
+            else:
+                # 2) надёжный вариант через bot.copy_message
+                await bot.copy_message(
+                    chat_id=REQUIRED_CHAT_ID,
+                    from_chat_id=message.chat.id,
+                    message_id=message.reply_to_message.message_id,
+                )
             await message.answer("✅ Сообщение (и вложения, если были) отправлено в чат клуба.")
         except Exception as e:
             await message.answer(f"⚠️ Не удалось скопировать сообщение: {e}")
         return
 
-    # Если ни текста, ни реплая — подсказываем формат
+    # Подсказка по использованию
     await message.answer(
         "ℹ️ Использование:\n"
         "• <code>/announce текст</code> — отправить текст в чат клуба\n"
         "• Ответь командой <code>/announce</code> на сообщение — чтобы переслать его (с вложениями) в чат клуба",
-        parse_mode=ParseMode.HTML
+        parse_mode=ParseMode.HTML,
     )
