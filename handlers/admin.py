@@ -515,3 +515,44 @@ async def send_progrev_message(message: Message):
 
     await message.bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
     await message.answer("✅ Сообщение прогрева отправлено в чат клуба.")
+
+@admin_router.message(Command("announce"))
+async def announce_handler(message: Message, bot: Bot):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    args_text = message.get_args().strip()
+
+    # Вариант 1: есть текст после команды — шлём текст (режем на части)
+    if args_text:
+        parts = chunk_text_by_lines(args_text)  # у тебя уже есть эта функция
+        sent = 0
+        for chunk in parts:
+            # По умолчанию HTML, предпросмотр ссылок выключен
+            await bot.send_message(
+                chat_id=REQUIRED_CHAT_ID,
+                text=chunk,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+            sent += 1
+        await message.answer(f"✅ Отправлено в чат клуба ({sent} сообщ.).")
+        return
+
+    # Вариант 2: без аргументов, но команда как reply — копируем исходное сообщение (с медиа)
+    if message.reply_to_message:
+        try:
+            await message.reply_to_message.copy_to(REQUIRED_CHAT_ID)
+            await message.answer("✅ Сообщение (и вложения, если были) отправлено в чат клуба.")
+        except Exception as e:
+            await message.answer(f"⚠️ Не удалось скопировать сообщение: {e}")
+        return
+
+    # Если ни текста, ни реплая — подсказываем формат
+    await message.answer(
+        "ℹ️ Использование:\n"
+        "• <code>/announce текст</code> — отправить текст в чат клуба\n"
+        "• Ответь командой <code>/announce</code> на сообщение — чтобы переслать его (с вложениями) в чат клуба",
+        parse_mode=ParseMode.HTML
+    )
