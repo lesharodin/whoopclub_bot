@@ -189,7 +189,7 @@ async def create_training(callback: CallbackQuery):
         # Автоматическая запись двух админов
         now = datetime.now().isoformat()
         admin_slots = [
-            (training_id, 932407372, 'fast', 'R1'),
+            (training_id, 932407372, 'standard', 'R1'),
             (training_id, 132536948, 'fast', 'L1')
         ]
         for training_id, admin_id, group, channel in admin_slots:
