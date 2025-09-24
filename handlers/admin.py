@@ -190,7 +190,7 @@ async def create_training(callback: CallbackQuery):
         now = datetime.now().isoformat()
         admin_slots = [
             (training_id, 932407372, 'standard', 'R1'),
-            (training_id, 132536948, 'fast', 'L1')
+            (training_id, 132536948, 'fast', 'R1')
         ]
         for training_id, admin_id, group, channel in admin_slots:
             cursor.execute("""
