@@ -5,7 +5,7 @@ from aiogram.exceptions import TelegramBadRequest
 from datetime import datetime, timedelta
 from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
-from aiogram.filters.command import Command
+from aiogram.filters.command import Command, CommandObject
 from aiogram.utils.markdown import hbold
 from handlers.booking import notify_admins_about_booking
 import calendar
@@ -189,8 +189,8 @@ async def create_training(callback: CallbackQuery):
         # Автоматическая запись двух админов
         now = datetime.now().isoformat()
         admin_slots = [
-            (training_id, 932407372, 'fast', 'R1'),
-            (training_id, 132536948, 'fast', 'L1')
+            (training_id, 932407372, 'standard', 'R1'),
+            (training_id, 132536948, 'fast', 'R1')
         ]
         for training_id, admin_id, group, channel in admin_slots:
             cursor.execute("""
@@ -515,3 +515,52 @@ async def send_progrev_message(message: Message):
 
     await message.bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
     await message.answer("✅ Сообщение прогрева отправлено в чат клуба.")
+
+@admin_router.message(Command("announce"))
+async def announce_handler(message: Message, bot: Bot, command: CommandObject):
+    # доступ только админам
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    # текст после команды (aiogram v3)
+    args_text = (command.args or "").strip()
+
+    # Вариант 1: есть текст — шлём как HTML, режем на части
+    if args_text:
+        parts = chunk_text_by_lines(args_text)  # твоя функция уже есть
+        for chunk in parts:
+            await bot.send_message(
+                chat_id=REQUIRED_CHAT_ID,
+                text=chunk,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+        await message.answer(f"✅ Сообщение отправлено в чат клуба ({len(parts)} частью/частями).")
+        return
+
+    # Вариант 2: нет текста, но команда в reply — копируем исходное сообщение «как есть»
+    if message.reply_to_message:
+        try:
+            # 1) пробуем «удобный» метод, если он есть в текущей версии
+            if hasattr(message.reply_to_message, "copy_to"):
+                await message.reply_to_message.copy_to(REQUIRED_CHAT_ID)
+            else:
+                # 2) надёжный вариант через bot.copy_message
+                await bot.copy_message(
+                    chat_id=REQUIRED_CHAT_ID,
+                    from_chat_id=message.chat.id,
+                    message_id=message.reply_to_message.message_id,
+                )
+            await message.answer("✅ Сообщение (и вложения, если были) отправлено в чат клуба.")
+        except Exception as e:
+            await message.answer(f"⚠️ Не удалось скопировать сообщение: {e}")
+        return
+
+    # Подсказка по использованию
+    await message.answer(
+        "ℹ️ Использование:\n"
+        "• <code>/announce текст</code> — отправить текст в чат клуба\n"
+        "• Ответь командой <code>/announce</code> на сообщение — чтобы переслать его (с вложениями) в чат клуба",
+        parse_mode=ParseMode.HTML,
+    )
