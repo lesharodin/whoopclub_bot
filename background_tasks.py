@@ -18,6 +18,7 @@ async def monitor_pending_slots(bot: Bot):
                 JOIN trainings t ON s.training_id = t.id
                 JOIN users u ON s.user_id = u.user_id
                 WHERE s.status = 'pending'
+                AND s.created_at < datetime('now', '-2 minutes')
                 AND NOT EXISTS (
                     SELECT 1 FROM admin_notifications n WHERE n.slot_id = s.id
                 )
