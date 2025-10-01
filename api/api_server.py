@@ -18,7 +18,7 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
 
     # Найти ID тренировки
     cursor.execute("""
-        SELECT id FROM trainings WHERE date LIKE ? LIMIT 1
+        SELECT id FROM trainings WHERE date LIKE ? AND  status != 'cancelled' LIMIT 1
     """, (f"{iso_prefix}%",))
     row = cursor.fetchone()
     if not row:
