@@ -39,7 +39,7 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
         elif group_name.lower() == "standard":
             return "Группа 2"
         else:
-            return "Группа ???"
+            return "Группа 3"
 
     return [
         {

@@ -7,11 +7,18 @@ from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
 from aiogram.filters.command import Command, CommandObject
 from aiogram.utils.markdown import hbold
-from handlers.booking import notify_admins_about_booking
+from handlers.booking import (
+    notify_admins_about_booking,
+    GROUPS,
+    MAX_SLOTS_PER_GROUP,
+    TOTAL_SLOTS,
+    get_group_label,
+)
 import calendar
 
 router = Router()
 MAX_LEN = 4096  # лимит Telegram
+
 
 def chunk_text_by_lines(text: str, limit: int = MAX_LEN):
     """Режет текст по строкам так, чтобы не превышать лимит"""
@@ -27,6 +34,7 @@ def chunk_text_by_lines(text: str, limit: int = MAX_LEN):
     if cur:
         parts.append("\n".join(cur))
     return parts
+
 
 def get_existing_training_dates() -> set[str]:
     """Получает даты только открытых тренировок (без времени) в формате 'YYYY-MM-DD'."""
@@ -90,10 +98,12 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
 
     return InlineKeyboardMarkup(inline_keyboard=markup)
 
+
 # Команда для проверки своего Telegram ID
 @router.message(F.text == "/id")
 async def get_id(message: Message):
     await message.answer(f"🪪 Твой Telegram ID: <code>{message.from_user.id}</code>")
+
 
 # Список пользователей
 @router.message(F.text == "/users")
@@ -145,6 +155,7 @@ async def list_users(message: Message):
             # fallback — отправляем как обычный текст
             await message.answer(chunk)
 
+
 # Создание тренировок
 @router.message(F.text == "/new_training")
 async def show_calendar(message: Message):
@@ -186,7 +197,7 @@ async def create_training(callback: CallbackQuery):
         # Создание тренировки
         cursor.execute("INSERT INTO trainings (date, status) VALUES (?, ?)", (dt.isoformat(), "open"))
         training_id = cursor.lastrowid
-        # Автоматическая запись двух админов
+        # Автоматическая запись двух админов (как и раньше)
         now = datetime.now().isoformat()
         admin_slots = [
             (training_id, 932407372, 'standard', 'R1'),
@@ -213,7 +224,7 @@ async def send_calendar(target, year: int, month: int):
         await target.edit_text(text, reply_markup=kb)
 
 
-#Начисление абонементов
+# Начисление абонементов
 
 
 @router.message(Command("add_subscription"))
@@ -299,7 +310,7 @@ async def cancel_add_subscription(callback: CallbackQuery):
     await callback.answer()
 
 
-#отмена тренировки    
+# отмена тренировки
 @router.message(Command("cancel_training"))
 async def cancel_training(message: Message):
     if message.from_user.id not in ADMINS:
@@ -330,6 +341,7 @@ async def cancel_training(message: Message):
     ])
 
     await message.answer("Выбери тренировку для отмены:", reply_markup=keyboard)
+
 
 @router.callback_query(F.data.startswith("cancel_train:"))
 async def confirm_training_cancel(callback: CallbackQuery):
@@ -383,7 +395,7 @@ async def confirm_training_cancel(callback: CallbackQuery):
     await callback.answer()
 
 
-#подсказки
+# подсказки
 
 @router.message(F.text == "/admin")
 async def admin_help(message: Message):
@@ -410,7 +422,9 @@ async def admin_help(message: Message):
 
     await message.answer(help_text, parse_mode="HTML")
 
+
 admin_router = Router()
+
 
 @admin_router.message(Command("resend_pending"))
 async def resend_pending_handler(message: Message, bot: Bot):
@@ -466,6 +480,7 @@ async def resend_pending_handler(message: Message, bot: Bot):
 
     await message.answer(f"✅ Уведомления повторно отправлены по {sent_count} слоту(ам).")
 
+
 @admin_router.message(F.text == "/progrev")
 async def send_progrev_message(message: Message):
     if message.from_user.id not in ADMINS:
@@ -493,28 +508,32 @@ async def send_progrev_message(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT group_name, COUNT(*) 
-            FROM slots 
+            SELECT group_name, COUNT(*)
+            FROM slots
             WHERE training_id = ? AND status IN ('confirmed')
             GROUP BY group_name
         """, (training_id,))
         counts = dict(cursor.fetchall())
 
-    fast_free = 7 - counts.get("fast", 0)
-    standard_free = 7 - counts.get("standard", 0)
-    fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
-    standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
+    # Формируем строки по всем группам из конфига
+    lines = []
+    for group_name in GROUPS.keys():
+        used = counts.get(group_name, 0)
+        free = MAX_SLOTS_PER_GROUP[group_name] - used
+        status = f"{free} мест" if free > 0 else "места закончились"
+        lines.append(f"{get_group_label(group_name)}: <b>{status}</b>")
 
     text = (
         f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
         f"📅 <b>{date_fmt}</b>\n\n"
-        f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
-        f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+        + "\n".join(lines) +
+        "\n\n"
         f"🚀 Успей записаться, пока есть места!"
     )
 
     await message.bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
     await message.answer("✅ Сообщение прогрева отправлено в чат клуба.")
+
 
 @admin_router.message(Command("announce"))
 async def announce_handler(message: Message, bot: Bot, command: CommandObject):

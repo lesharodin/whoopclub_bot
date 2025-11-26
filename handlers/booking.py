@@ -8,6 +8,40 @@ from logging_config import logger
 
 router = Router()
 
+# ==========================
+# Конфиг групп и каналов
+# ==========================
+
+GROUPS = {
+    "fast": {
+        "label": "⚡ Быстрая",
+        "channels": ["R1", "R2", "F2", "F4", "R8"],
+    },
+    "standard": {
+        "label": "🚀 Средняя",
+        "channels": ["R1", "R2", "F2", "F4", "R8"],
+    },
+    "third": {
+        "label": "🏁 Стандартная",
+        "channels": ["R1", "R2", "F2", "F4", "R8"],
+    },
+}
+
+# Максимум слотов в каждой группе — по длине списка каналов
+MAX_SLOTS_PER_GROUP = {
+    name: len(cfg["channels"])
+    for name, cfg in GROUPS.items()
+}
+
+# Общее количество слотов на тренировку
+TOTAL_SLOTS = sum(MAX_SLOTS_PER_GROUP.values())
+
+
+def get_group_label(group_name: str) -> str:
+    """Красивое имя группы по её коду."""
+    return GROUPS.get(group_name, {}).get("label", group_name)
+
+
 @router.message(F.text.contains("Записаться"))
 async def show_available_trainings(message: Message):
     user_id = message.from_user.id
@@ -35,7 +69,7 @@ async def show_available_trainings(message: Message):
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    total_slots = 14  # 7 в fast + 7 в standard
+    total_slots = TOTAL_SLOTS
 
     keyboard = []
     for training_id, date_str, booked_count, user_booked, user_pending in trainings:
@@ -63,6 +97,7 @@ async def show_available_trainings(message: Message):
 
 
 
+
 @router.callback_query(F.data.startswith("select_training:"))
 async def show_group_choice(callback: CallbackQuery, training_id_override: int = None):
     training_id = training_id_override or int(callback.data.split(":")[1])
@@ -84,17 +119,29 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
 
         # Получаем кол-во занятых мест в каждой группе
         cursor.execute("""
-            SELECT group_name, COUNT(*) 
-            FROM slots 
+            SELECT group_name, COUNT(*)
+            FROM slots
             WHERE training_id = ? AND status IN ('pending', 'confirmed')
             GROUP BY group_name
         """, (training_id,))
         counts = dict(cursor.fetchall())
 
-        fast_free = 7 - counts.get("fast", 0)
-        standard_free = 7 - counts.get("standard", 0)
+        # Формируем список кнопок по всем группам из конфига
+        buttons = []
+        total_free = 0
+        for group_name, cfg in GROUPS.items():
+            used = counts.get(group_name, 0)
+            free = MAX_SLOTS_PER_GROUP[group_name] - used
+            free = max(free, 0)
+            total_free += free
+            buttons.append(
+                InlineKeyboardButton(
+                    text=f"{cfg['label']} ({free})",
+                    callback_data=f"book:{training_id}:{group_name}"
+                )
+            )
 
-        if fast_free + standard_free <= 0:
+        if total_free <= 0:
             await callback.answer("Мест не осталось ❌", show_alert=True)
             return
 
@@ -108,19 +155,20 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
 
     date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(
-            text=f"⚡ Быстрая ({fast_free})", 
-            callback_data=f"book:{training_id}:fast"
-        ),
-        InlineKeyboardButton(
-            text=f"🏁 Стандартная ({standard_free})", 
-            callback_data=f"book:{training_id}:standard"
-        )
-    ],
-    [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_trainings")]
-])
+    # Раскладываем кнопки по 2 в ряд
+    rows = []
+    row_buttons: list[InlineKeyboardButton] = []
+    for btn in buttons:
+        row_buttons.append(btn)
+        if len(row_buttons) == 2:
+            rows.append(row_buttons)
+            row_buttons = []
+    if row_buttons:
+        rows.append(row_buttons)
+
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_trainings")])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
     await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
 
@@ -171,25 +219,18 @@ async def back_to_trainings(callback: CallbackQuery):
 async def back_to_groups(callback: CallbackQuery):
     training_id = int(callback.data.split(":")[1])
     await show_group_choice(callback=callback, training_id_override=training_id)
-#Бронирование
+# Бронирование
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
     _, training_id, group = callback.data.split(":")
     training_id = int(training_id)
 
-    # Новый список каналов для каждой группы
-    GROUP_CHANNELS = {
-        "fast": ["L1","R1","R2", "F2", "F4", "R7", "R8"],
-        "standard": ["R1", "R2", "F2", "F4", "R7", "R8", "L1"]
-    }
-
-    all_channels = GROUP_CHANNELS.get(group)
+    all_channels = GROUPS.get(group, {}).get("channels")
     if not all_channels:
         await callback.message.edit_text("❌ Неизвестная группа.")
         return
 
     with get_connection() as conn:
-        
         cursor = conn.cursor()
         # Получение даты тренировки
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
@@ -204,7 +245,7 @@ async def choose_channel(callback: CallbackQuery):
             SELECT channel FROM slots
             WHERE training_id = ? AND group_name = ? AND status IN ('pending', 'confirmed')
         """, (training_id, group))
-        taken = [row[0] for row in cursor.fetchall()]
+        taken = [r[0] for r in cursor.fetchall()]
 
     available = [ch for ch in all_channels if ch not in taken]
 
@@ -212,16 +253,19 @@ async def choose_channel(callback: CallbackQuery):
         await callback.message.edit_text("❌ В этой группе нет свободных каналов.")
         return
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{group}:{ch}")]
-    for ch in available
-    ] + [
-    [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_groups:{training_id}")]
-    ])
-   
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{group}:{ch}")]
+            for ch in available
+        ] + [
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_groups:{training_id}")]
+        ]
+    )
+
+    group_label = get_group_label(group)
 
     await callback.message.edit_text(
-        f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",
+        f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы в группе <b>{group_label}</b>:",
         reply_markup=keyboard
     )
 
@@ -286,6 +330,8 @@ async def reserve_slot(callback: CallbackQuery):
 
         conn.commit()
 
+    group_label = get_group_label(group)
+
     if payment_type == "subscription":
         # Подсчёт оставшихся мест
         with get_connection() as conn:
@@ -295,7 +341,7 @@ async def reserve_slot(callback: CallbackQuery):
                 WHERE training_id = ? AND status = 'confirmed'
             """, (training_id,))
             booked = cursor.fetchone()[0]
-            free_slots = 14 - booked
+            free_slots = TOTAL_SLOTS - booked
 
             cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
             sub_row = cursor.fetchone()
@@ -303,7 +349,7 @@ async def reserve_slot(callback: CallbackQuery):
 
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
-            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n"
             f"<i>Оплата через абонемент. Запись подтверждена автоматически.</i>\n"
             f"🎟 Осталось абонементов: <b>{sub_left}</b>"
         )
@@ -311,7 +357,7 @@ async def reserve_slot(callback: CallbackQuery):
         await callback.bot.send_message(
             REQUIRED_CHAT_ID,
             f"🛸 {'@' + username if username else full_name} записался на тренировку <b>{date_fmt}</b>\n"
-            f"Осталось мест: {free_slots}/12",
+            f"Осталось мест: {free_slots}/{TOTAL_SLOTS}",
             parse_mode="HTML"
         )
 
@@ -320,7 +366,7 @@ async def reserve_slot(callback: CallbackQuery):
                 admin,
                 f"✅ {'@' + username if username else full_name} записался через абонемент:\n"
                 f"📅 {date_fmt}\n"
-                f"🏁 {'⚡ <b>Быстрая</b>' if group == 'fast' else '🏁 <b>Стандартная</b>'}\n"
+                f"🏁 <b>{group_label}</b>\n"
                 f"📡 Канал: <b>{channel}</b>\n"
                 f"🎟 Осталось абонементов: <b>{sub_left}</b>",
                 parse_mode="HTML"
@@ -336,7 +382,7 @@ async def reserve_slot(callback: CallbackQuery):
 
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
-            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n"
             f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"Либо по номеру карты <code>{CARD}</code>\n"
             f"После оплаты нажмите кнопку ниже.",
@@ -414,6 +460,7 @@ async def confirm_manual_payment(callback: CallbackQuery):
 
     await callback.message.edit_text("🔔 Администратор уведомлён. Ожидайте подтверждения оплаты.")
 
+
 async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username, payment_type, full_name, date_str):
     logger.info("[notify_admins_about_booking]")
     logger.info(f"  user_id: {user_id}")
@@ -440,7 +487,7 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
         payment_desc += f" (осталось {remaining})"
 
     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    group_label = get_group_label(group)
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm:{slot_id}"),
@@ -469,6 +516,7 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
                 VALUES (?, ?, ?)
             """, (slot_id, admin, msg.message_id))
             conn.commit()
+
 
 
 @router.callback_query(F.data.startswith("confirm:"))
@@ -501,6 +549,7 @@ async def confirm_booking(callback: CallbackQuery):
         if payment_type == "subscription":
             cursor.execute("UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", (user_id,))
         conn.commit()
+
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     await callback.message.edit_text("✅ Оплата подтверждена")
     await callback.bot.send_message(user_id, f"✅ Ваша запись подтверждена! Ждём вас на тренировке {date_fmt}🛸")
@@ -517,8 +566,7 @@ async def confirm_booking(callback: CallbackQuery):
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
     # 📨 Формируем сообщение админу
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
-    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    group_label = get_group_label(group)
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
     
     admin_name = callback.from_user.full_name
@@ -555,7 +603,7 @@ async def confirm_booking(callback: CallbackQuery):
             WHERE training_id = (SELECT training_id FROM slots WHERE id = ?) AND status IN ('confirmed')
         """, (slot_id,))
         booked = cursor.fetchone()[0]
-    free_slots = 14 - booked
+    free_slots = TOTAL_SLOTS - booked
 
     # Уведомление в клубный чат
     if username:
@@ -566,11 +614,12 @@ async def confirm_booking(callback: CallbackQuery):
     await callback.bot.send_message(
         REQUIRED_CHAT_ID,
         f"🛸 {display_name} записался на тренировку <b>{date_fmt}</b>\n"
-        f"Осталось мест: {free_slots}/12"
+        f"Осталось мест: {free_slots}/{TOTAL_SLOTS}"
     )
         
     for admin in ADMINS:
         await callback.bot.send_message(admin, admin_message, parse_mode="HTML")
+
 
 @router.callback_query(F.data.startswith("reject:"))
 async def reject_booking(callback: CallbackQuery):
@@ -620,8 +669,8 @@ async def reject_booking(callback: CallbackQuery):
         admin_name = callback.from_user.full_name
 
         # Формируем лог для админов
-        group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
-        date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+        group_label = get_group_label(group)
+        date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%М")
         payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
 
         admin_message = (
@@ -635,12 +684,12 @@ async def reject_booking(callback: CallbackQuery):
             f"{payment_text}"
         )
         # Удаляем сообщения с кнопками у всех админов
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
-            messages = cursor.fetchall()
-            cursor.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
-            conn.commit()
+        with get_connection() as conn2:
+            cursor2 = conn2.cursor()
+            cursor2.execute("SELECT admin_id, message_id FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+            messages = cursor2.fetchall()
+            cursor2.execute("DELETE FROM admin_notifications WHERE slot_id = ?", (slot_id,))
+            conn2.commit()
 
         for admin_id, message_id in messages:
             try:
@@ -673,8 +722,13 @@ async def show_my_bookings(message: Message):
     lines = ["📅 Ваши записи на тренировки:\n\n"]
     for date_str, group, channel, status in rows:
         date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
-        group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
-        status_label = "⏳ Ожидает" if status == "pending" else "✅ Подтверждена"
+        group_label = get_group_label(group)
+        if status == "pending":
+            status_label = "⏳ Ожидает"
+        elif status == "pending_cancel":
+            status_label = "⏳ Запрос отмены"
+        else:
+            status_label = "✅ Подтверждена"
         lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}\n\n")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -794,7 +848,7 @@ async def confirm_cancel_request(callback: CallbackQuery):
     username = callback.from_user.username
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    group_label = get_group_label(group)
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
 
@@ -828,6 +882,7 @@ async def confirm_cancel_request(callback: CallbackQuery):
                 VALUES (?, ?, ?)
             """, (slot_id, admin, msg.message_id))
             conn.commit()
+
 @router.callback_query(F.data.startswith("admin_cancel:"))
 async def admin_confirm_cancel(callback: CallbackQuery):
     slot_id = int(callback.data.split(":")[1])
@@ -889,7 +944,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
     await callback.bot.send_message(user_id, f"❌ Ваша запись отменена.\n{refund_text}")
     # Формируем лог админу
     date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
+    group_label = get_group_label(group)
     payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
     
     try:
@@ -920,13 +975,13 @@ async def admin_confirm_cancel(callback: CallbackQuery):
             WHERE training_id = ? AND status = 'confirmed'
         """, (training_id,))
         booked = cursor.fetchone()[0]
-    free_slots = 14 - booked
+    free_slots = TOTAL_SLOTS - booked
 
     # Уведомление в клубный чат
     await callback.bot.send_message(
         REQUIRED_CHAT_ID,
         f"🚪 Освободилось место на тренировке <b>{date_fmt}</b>!\n"
-        f"Осталось мест: {free_slots}/12",
+        f"Осталось мест: {free_slots}/{TOTAL_SLOTS}",
         parse_mode="HTML"
     )
 

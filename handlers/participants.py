@@ -3,7 +3,11 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from database.db import get_connection
 from datetime import datetime
 
+# импортируем конфиг групп из booking
+from handlers.booking import GROUPS, get_group_label
+
 router = Router()
+
 
 @router.message(F.text.contains("Участники"))
 async def show_participants_list(message: Message):
@@ -31,22 +35,31 @@ async def show_participants_list(message: Message):
 
     await message.answer("👥 Выбери тренировку для просмотра участников:", reply_markup=keyboard)
 
+
 @router.callback_query(F.data.startswith("participants:"))
 async def show_participants(callback: CallbackQuery):
     training_id = int(callback.data.split(":")[1])
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
-        date_str = cursor.fetchone()[0]
+        row = cursor.fetchone()
+        if not row:
+            await callback.answer("❌ Тренировка не найдена", show_alert=True)
+            return
+
+        date_str = row[0]
         dt = datetime.fromisoformat(date_str)
         pretty_date = dt.strftime("%d.%m.%Y %H:%M")
 
         message_lines = [f"📅 Тренировка {pretty_date}\n"]
 
-        for group_key, group_name in [("fast", "⚡ <b>Быстрая группа</b>"), ("standard", "🎽 <b>Стандартная группа</b>")]:
-            message_lines.append(group_name)
+        # Проходимся по всем группам из конфига
+        for group_key, group_cfg in GROUPS.items():
+            group_label = get_group_label(group_key)  # например "⚡ Быстрая"
+            message_lines.append(f"{group_label} <b>группа</b>")
 
-            CHANNEL_ORDER = ['R1', 'R2', 'F2', 'F4', 'R7', 'R8', 'L1']
+            CHANNEL_ORDER = group_cfg["channels"]  # например ["R1", "R2", "F2", "F4", "R8"]
+
             for idx, channel in enumerate(CHANNEL_ORDER, 1):
                 cursor.execute("""
                     SELECT s.user_id, u.nickname, u.system
@@ -66,10 +79,18 @@ async def show_participants(callback: CallbackQuery):
                         username = None
                         first_name = "профиль"
 
-                    user_link = f"@{username}" if username else f"<a href=\"tg://user?id={user_id}\">{first_name}</a>"
-                    message_lines.append(f"{idx}. {channel} — {user_link} (OSD: <code>{nickname or '-'}</code>, VTX: {system or '-'})")
+                    user_link = (
+                        f"@{username}"
+                        if username
+                        else f"<a href=\"tg://user?id={user_id}\">{first_name}</a>"
+                    )
+                    message_lines.append(
+                        f"{idx}. {channel} — {user_link} "
+                        f"(OSD: <code>{nickname or '-'}</code>, VTX: {system or '-'})"
+                    )
                 else:
                     message_lines.append(f"{idx}. {channel} — свободно")
 
             message_lines.append("")  # пустая строка между группами
+
     await callback.message.edit_text("\n".join(message_lines))
