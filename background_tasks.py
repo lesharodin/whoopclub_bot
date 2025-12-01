@@ -62,6 +62,10 @@ async def monitor_pending_slots(bot: Bot):
 sent_progrev_for_dates = set()  # локальный кэш, чтобы не слать повторно
 
 async def check_and_send_progrev(bot: Bot):
+    """
+    Ежедневно в 13:00 шлём прогрев на завтрашнюю тренировку,
+    текст и логика такие же, как в /progrev, но для ровно следующего дня.
+    """
     while True:
         now = datetime.now()
 
@@ -89,25 +93,28 @@ async def check_and_send_progrev(bot: Bot):
                 with get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
-                        SELECT group_name, COUNT(*) 
-                        FROM slots 
-                        WHERE training_id = ? AND status IN ('pending', 'confirmed')
+                        SELECT group_name, COUNT(*)
+                        FROM slots
+                        WHERE training_id = ? AND status IN ('confirmed')
                         GROUP BY group_name
                     """, (training_id,))
                     counts = dict(cursor.fetchall())
 
-                fast_free = 7 - counts.get("fast", 0)
-                standard_free = 7 - counts.get("standard", 0)
+                # Формируем строки по всем группам, как в /progrev
+                lines = []
+                for group_name in GROUPS.keys():
+                    used = counts.get(group_name, 0)
+                    free = MAX_SLOTS_PER_GROUP[group_name] - used
+                    status = f"{free} мест" if free > 0 else "места закончились"
+                    lines.append(f"{get_group_label(group_name)}: <b>{status}</b>")
 
-                fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
-                standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
                 date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
 
                 text = (
                     f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
                     f"📅 <b>{date_fmt}</b>\n\n"
-                    f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
-                    f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+                    + "\n".join(lines) +
+                    "\n\n"
                     f"🚀 Успей записаться, пока есть места!"
                 )
 
@@ -117,18 +124,28 @@ async def check_and_send_progrev(bot: Bot):
                     print(f"[+] Сообщение про прогрев на {date_only} отправлено")
                 except Exception as e:
                     for admin in ADMINS:
-                        await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
+                        try:
+                            await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
+                        except:
+                            pass
 
         await asyncio.sleep(60)  # проверяем каждую минуту
+
+
 full_trainings_sent = set()  # хранит training_id, по которым уже отправлено
 
+
 async def monitor_full_trainings(bot: Bot):
+    """
+    Раз в 5 минут проверяем открытые тренировки и, если все слоты заняты,
+    шлём в чат сообщение «все места закончились».
+    """
     while True:
         await asyncio.sleep(300)  # каждые 5 минут
 
         with get_connection() as conn:
             cursor = conn.cursor()
-            # Все открытые тренировки
+            # Все открытые тренировки, по которым ещё не отправляли сообщение
             cursor.execute("""
                 SELECT id, date FROM trainings
                 WHERE status = 'open' AND full_message_sent = 0
@@ -148,12 +165,16 @@ async def monitor_full_trainings(bot: Bot):
                 """, (training_id,))
                 counts = dict(cursor.fetchall())
 
-                if counts.get("fast", 0) >= 7 and counts.get("standard", 0) >= 7:
+                total_confirmed = sum(counts.values())
+                if total_confirmed >= TOTAL_SLOTS:
+                    # Тренировка полностью забита
                     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m %H:%M")
                     text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
+
                     try:
-                        await bot.send_message(REQUIRED_CHAT_ID, text)
+                        await bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
                         cursor.execute("UPDATE trainings SET full_message_sent = 1 WHERE id = ?", (training_id,))
                         conn.commit()
+                        full_trainings_sent.add(training_id)
                     except Exception as e:
                         print(f"[!] Ошибка при отправке уведомления о полной тренировке: {e}")
