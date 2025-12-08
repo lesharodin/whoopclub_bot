@@ -3,11 +3,20 @@ from datetime import datetime, timedelta
 from aiogram import Bot
 from database.db import get_connection
 from config import ADMINS, REQUIRED_CHAT_ID
-from handlers.booking import notify_admins_about_booking
+
+# Импортируем не только notify_admins_about_booking, но и конфиг групп
+from handlers.booking import (
+    notify_admins_about_booking,
+    GROUPS,
+    MAX_SLOTS_PER_GROUP,
+    TOTAL_SLOTS,
+    get_group_label,
+)
+
 
 async def monitor_pending_slots(bot: Bot):
     while True:
-        await asyncio.sleep(900)  # Каждые 5 минут
+        await asyncio.sleep(900)  # Каждые 15 минут
 
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -59,7 +68,9 @@ async def monitor_pending_slots(bot: Bot):
             except Exception as e:
                 print(f"[!] Ошибка при переотправке записи {slot_id}: {e}")
 
+
 sent_progrev_for_dates = set()  # локальный кэш, чтобы не слать повторно
+
 
 async def check_and_send_progrev(bot: Bot):
     """
