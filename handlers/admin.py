@@ -406,6 +406,7 @@ async def admin_help(message: Message):
     help_text = (
         "🛠 <b>Админ-команды:</b>\n\n"
         "📋 <b>/users</b> — список всех зарегистрированных пользователей\n"
+        "💵 <b>/abonement</b> — список всех пользователей с абонементами\n"
         "📅 <b>/new_training</b> — создать новую тренировку через календарь\n"
         "Создание тренировки доступно только на вторник или субботу.\n"
         "➕ <b>/add_subscription &lt;user_id&gt; &lt;кол-во&gt;</b> — начислить абонементы пользователю\n"
@@ -418,6 +419,8 @@ async def admin_help(message: Message):
         "🚒<b>/progrev</b> - отправить прогрев о свободных местах\n"
         "🔁<b>/resend_pending</b> - проверить нет ли залипших слотов\n"
         "\n"
+        
+
     )
 
     await message.answer(help_text, parse_mode="HTML")
@@ -583,3 +586,61 @@ async def announce_handler(message: Message, bot: Bot, command: CommandObject):
         "• Ответь командой <code>/announce</code> на сообщение — чтобы переслать его (с вложениями) в чат клуба",
         parse_mode=ParseMode.HTML,
     )
+# Список пользователей с абонементами
+@router.message(F.text == "/abonement")
+async def list_abonement_users(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT user_id, nickname, system, subscription
+            FROM users
+            WHERE COALESCE(subscription, 0) > 0
+            ORDER BY subscription DESC, user_id
+        """)
+        users = cursor.fetchall()
+
+        # также подсчитаем общее число таких пользователей и сумму абонементов
+        cursor.execute("SELECT COUNT(*), SUM(COALESCE(subscription,0)) FROM users WHERE COALESCE(subscription,0) > 0")
+        stats = cursor.fetchone()
+
+    if not users:
+        await message.answer("📭 Нет пользователей с абонементами.")
+        return
+
+    total_users = stats[0] or 0
+    total_subs = stats[1] or 0
+
+    lines = [f"🎟 Пользователи с абонементами: <b>{total_users}</b>\n"
+             f"Σ абонементов: <b>{total_subs}</b>\n",
+             "--------------------------------"]
+
+    for user_id, nickname, system, subscription in users:
+        # Пытаемся получить username и полное имя
+        try:
+            chat_member = await message.bot.get_chat_member(chat_id=user_id, user_id=user_id)
+            full_name = chat_member.user.full_name or "—"
+            username = chat_member.user.username
+        except Exception:
+            full_name, username = "—", None
+
+        user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
+
+        lines.append(
+            f"{user_link} | ID: <code>{user_id}</code>\n"
+            f"🎮 OSD: {nickname or '—'}\n"
+            f"🎥 Система: {system or '—'}\n"
+            f"🎟 Абонементов: <b>{subscription}</b>\n"
+            f"---"
+        )
+
+    text = "\n".join(lines)
+
+    for chunk in chunk_text_by_lines(text):
+        try:
+            await message.answer(chunk, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        except TelegramBadRequest:
+            await message.answer(chunk)
