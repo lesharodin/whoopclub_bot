@@ -187,7 +187,7 @@ async def create_training(callback: CallbackQuery):
     if selected_date.weekday() == 1:  # вторник
         dt = selected_date.replace(hour=19, minute=0)
     elif selected_date.weekday() == 5:  # суббота
-        dt = selected_date.replace(hour=16, minute=0)
+        dt = selected_date.replace(hour=11, minute=0)
     else:
         await callback.answer("Можно выбрать только вторник или субботу", show_alert=True)
         return
