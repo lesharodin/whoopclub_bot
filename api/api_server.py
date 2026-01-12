@@ -1,7 +1,12 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 import sqlite3
 from datetime import datetime
 import os
+import hmac
+import hashlib
+import json
+
+YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET")
 
 app = FastAPI()
 
@@ -51,3 +56,58 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
         }
         for nickname, group, channel in cursor.fetchall()
     ]
+
+@app.post("/yookassa/webhook")
+async def yookassa_webhook(request: Request):
+    # тело запроса
+    body = await request.body()
+
+    # подпись от ЮKassa
+    signature = request.headers.get("Content-HMAC-SHA256")
+    if not signature:
+        raise HTTPException(status_code=400, detail="Missing signature")
+
+    # проверка подписи
+    expected_signature = hmac.new(
+        YOOKASSA_WEBHOOK_SECRET.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, signature):
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    data = json.loads(body)
+
+    # нас интересует только успешная оплата
+    if data.get("event") != "payment.succeeded":
+        return {"ok": True}
+
+    payment = data["object"]
+
+    slot_id = int(payment["metadata"]["slot_id"])
+    yookassa_payment_id = payment["id"]
+
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
+    cursor = conn.cursor()
+
+    # отмечаем платёж
+    cursor.execute("""
+        UPDATE payments
+        SET status = 'succeeded'
+        WHERE yookassa_payment_id = ?
+    """, (yookassa_payment_id,))
+
+    # подтверждаем слот
+    cursor.execute("""
+        UPDATE slots
+        SET status = 'confirmed'
+        WHERE id = ?
+    """, (slot_id,))
+
+    conn.commit()
+    conn.close()
+
+    print(f"[YOOKASSA] payment succeeded, slot_id={slot_id}")
+
+    return {"ok": True}
