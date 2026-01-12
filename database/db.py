@@ -64,6 +64,28 @@ def init_db():
                 created_at TEXT
     )
 """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                slot_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+
+                yookassa_payment_id TEXT UNIQUE NOT NULL,
+
+                amount INTEGER NOT NULL,
+                currency TEXT NOT NULL DEFAULT 'RUB',
+
+                payment_method TEXT NOT NULL,
+                status TEXT NOT NULL,
+
+                created_at TEXT NOT NULL,
+                paid_at TEXT,
+
+                FOREIGN KEY (slot_id) REFERENCES slots(id)
+    )
+""")
+
 
 
     print("✅ Таблицы users, trainings и slots, subscription_usage созданы (если не существовали)")

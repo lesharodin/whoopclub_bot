@@ -18,7 +18,7 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
     except ValueError:
         raise HTTPException(status_code=400, detail="Неверный формат даты. Используйте DD.MM.YYYY")
 
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
     cursor = conn.cursor()
 
     # Найти ID тренировки
@@ -73,7 +73,7 @@ async def yookassa_webhook(request: Request):
 
     slot_id = int(metadata.get("slot_id"))
 
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
     cursor = conn.cursor()
 
     # 1️⃣ Проверяем, есть ли платёж и не обработан ли он

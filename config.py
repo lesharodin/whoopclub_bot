@@ -14,3 +14,6 @@ if not BOT_TOKEN:
 ADMINS = list(map(int, os.getenv("ADMINS", "").split()))
 PAYMENT_LINK = os.getenv("PAYMENT_LINK")
 CARD = os.getenv("CARD")
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
+YOOKASSA_RETURN_URL = os.getenv("YOOKASSA_RETURN_URL")
