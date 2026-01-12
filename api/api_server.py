@@ -59,55 +59,24 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
 
 @app.post("/yookassa/webhook")
 async def yookassa_webhook(request: Request):
-    # тело запроса
-    body = await request.body()
+    data = await request.json()
 
-    # подпись от ЮKassa
-    signature = request.headers.get("Content-HMAC-SHA256")
-    if not signature:
-        raise HTTPException(status_code=400, detail="Missing signature")
+    print("=== YOOKASSA WEBHOOK RECEIVED ===")
+    print(data)
 
-    # проверка подписи
-    expected_signature = hmac.new(
-        YOOKASSA_WEBHOOK_SECRET.encode(),
-        body,
-        hashlib.sha256
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected_signature, signature):
-        raise HTTPException(status_code=403, detail="Invalid signature")
-
-    data = json.loads(body)
-
-    # нас интересует только успешная оплата
-    if data.get("event") != "payment.succeeded":
+    event = data.get("event")
+    if event != "payment.succeeded":
+        print(f"Ignored event: {event}")
         return {"ok": True}
 
-    payment = data["object"]
+    payment = data.get("object", {})
+    payment_id = payment.get("id")
+    status = payment.get("status")
+    metadata = payment.get("metadata", {})
 
-    slot_id = int(payment["metadata"]["slot_id"])
-    yookassa_payment_id = payment["id"]
-
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
-    cursor = conn.cursor()
-
-    # отмечаем платёж
-    cursor.execute("""
-        UPDATE payments
-        SET status = 'succeeded'
-        WHERE yookassa_payment_id = ?
-    """, (yookassa_payment_id,))
-
-    # подтверждаем слот
-    cursor.execute("""
-        UPDATE slots
-        SET status = 'confirmed'
-        WHERE id = ?
-    """, (slot_id,))
-
-    conn.commit()
-    conn.close()
-
-    print(f"[YOOKASSA] payment succeeded, slot_id={slot_id}")
+    print("Payment succeeded!")
+    print(f"payment_id: {payment_id}")
+    print(f"status: {status}")
+    print(f"metadata: {metadata}")
 
     return {"ok": True}
