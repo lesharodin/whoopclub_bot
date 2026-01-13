@@ -5,6 +5,7 @@ import os
 import hmac
 import hashlib
 import json
+import requests
 YOOKASSA_API = "https://api.yookassa.ru/v3/payments"
 SHOP_ID = os.getenv("YOOKASSA_TEST_SHOP_ID")
 SECRET = os.getenv("YOOKASSA_TEST_SECRET_KEY")
