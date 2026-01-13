@@ -10,6 +10,8 @@ from datetime import datetime
 YOOKASSA_API = "https://api.yookassa.ru/v3/payments"
 TEST_API_URL = os.getenv("TEST_API_URL")
 ENV = os.getenv("ENV")
+YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_TEST_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_TEST_SECRET_KEY")
 
 def _create_payment_test(slot_id: int, user_id: int, amount: int, description: str):
     resp = requests.post(

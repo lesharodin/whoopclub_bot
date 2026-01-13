@@ -137,27 +137,26 @@ def get_slot_status(slot_id: int):
         "status": row[0]
     }
 
+from handlers.yookassa_test import create_test_payment
+
 @app.post("/api/create_payment")
 async def create_payment_api(payload: dict):
     slot_id = int(payload["slot_id"])
     user_id = int(payload["user_id"])
     amount = int(payload["amount"])
-    description = payload.get("description", "Оплата тренировки WhoopClub (TEST)")
+    description = payload.get("description")
 
-    # 1️⃣ создаём платёж в ЮKassa
-    payment = yk_create_payment(
+    payment = create_test_payment(
+        slot_id=slot_id,
         amount=amount,
-        description=description,
-        user_id=user_id,
-        slot_id=slot_id
+        description=description
     )
 
     payment_id = payment["id"]
 
-    # 2️⃣ сохраняем в test.db
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
+    conn = sqlite3.connect("database/test.db")
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         INSERT INTO payments (
             slot_id,
@@ -182,7 +181,6 @@ async def create_payment_api(payload: dict):
     conn.close()
 
     return {
-        "payment_id": payment_id,
-        "confirmation_url": payment["confirmation"]["confirmation_url"]
+        "id": payment_id,
+        "confirmation": payment["confirmation"]
     }
-
