@@ -104,7 +104,7 @@ def _create_payment_prod(slot_id: int, user_id: int, amount: int, description: s
 #
 #    raise RuntimeError(f"Unknown ENV={ENV}")
 
-def create_payment(*, slot_id: int, user_id: int, amount: int, description: str):
+def create_payment(slot_id: int, user_id: int, amount: int, description: str):
     resp = requests.post(
         f"{TEST_API_URL}/api/create_payment",
         json={
@@ -113,7 +113,7 @@ def create_payment(*, slot_id: int, user_id: int, amount: int, description: str)
             "amount": amount,
             "description": description
         },
-        timeout=15
+        timeout=10
     )
     resp.raise_for_status()
     return resp.json()

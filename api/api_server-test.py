@@ -9,8 +9,8 @@ import json
 import requests
 YOOKASSA_API = "https://api.yookassa.ru/v3/payments"
 SHOP_ID = os.getenv("YOOKASSA_TEST_SHOP_ID")
-SECRET = os.getenv("YOOKASSA_TEST_SECRET_KEY")
-RETURN_URL = os.getenv("YOOKASSA_RETURN_URL")
+SECRET_KEY = os.getenv("YOOKASSA_TEST_SECRET_KEY")
+RETURN_URL = os.getenv("YOOKASSA_TEST_RETURN_URL")
 
 
 YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET")
@@ -149,7 +149,7 @@ async def create_payment_api(payload: dict):
     amount = int(payload["amount"])
     description = payload.get("description", "Оплата тренировки WhoopClub (TEST)")
 
-    payment = create_yookassa_test_payment(
+    payment = create_yookassa_payment(
         slot_id=slot_id,
         amount=amount,
         description=description
@@ -157,16 +157,25 @@ async def create_payment_api(payload: dict):
 
     payment_id = payment["id"]
 
-    conn = sqlite3.connect("database/test.db")
+    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO payments (
-            slot_id, user_id, yookassa_payment_id,
-            amount, payment_method, status, created_at
+            slot_id,
+            user_id,
+            yookassa_payment_id,
+            amount,
+            payment_method,
+            status,
+            created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
-        slot_id, user_id, payment_id,
-        amount, "yookassa", "pending",
+        slot_id,
+        user_id,
+        payment_id,
+        amount,
+        "yookassa",
+        "pending",
         datetime.now().isoformat()
     ))
     conn.commit()
@@ -178,32 +187,39 @@ async def create_payment_api(payload: dict):
     }
 
 
-def create_yookassa_test_payment(slot_id: int, amount: int, description: str):
+
+def create_yookassa_payment(slot_id: int, amount: int, description: str):
     payload = {
         "amount": {
             "value": f"{amount:.2f}",
             "currency": "RUB"
         },
+        "capture": True,
         "confirmation": {
             "type": "redirect",
             "return_url": RETURN_URL
         },
-        "capture": True,
+        "payment_method_data": {
+            "type": "bank_card"
+        },
         "description": description,
         "metadata": {
             "slot_id": str(slot_id)
-        },
-        "payment_method_data": {
-            "type": "bank_card"
         }
     }
 
-    r = requests.post(
+    headers = {
+        "Idempotence-Key": str(uuid.uuid4()),
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(
         YOOKASSA_API,
         json=payload,
-        auth=(SHOP_ID, SECRET),
-        headers={"Idempotence-Key": str(uuid.uuid4())},
-        timeout=15
+        headers=headers,
+        auth=(SHOP_ID, SECRET_KEY),
+        timeout=10
     )
-    r.raise_for_status()
-    return r.json()
+
+    response.raise_for_status()
+    return response.json()
