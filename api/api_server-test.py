@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query, HTTPException, Request
 import sqlite3
 from datetime import datetime
 import os
+import uuid
 import hmac
 import hashlib
 import json
