@@ -5,6 +5,7 @@ from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_RETURN_URL
 import os
 from database.db import get_connection
 from datetime import datetime
+from requests.auth import HTTPBasicAuth
 
 
 YOOKASSA_API = "https://api.yookassa.ru/v3/payments"

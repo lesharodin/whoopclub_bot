@@ -287,9 +287,9 @@ def payment_status(payment_id: str):
         "paid": row[0] == "succeeded"
     }
 
-
-def create_yookassa_payment(
-    entity_type: str,
+def create_payment(
+    *,
+    entity_type: str,        # 'slot' | 'subscription'
     entity_id: int,
     amount: int,
     description: str
@@ -302,7 +302,7 @@ def create_yookassa_payment(
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": RETURN_URL
+            "return_url": YOOKASSA_RETURN_URL
         },
         "payment_method_data": {
             "type": "bank_card"
@@ -313,3 +313,19 @@ def create_yookassa_payment(
             "entity_id": str(entity_id)
         }
     }
+
+    headers = {
+        "Idempotence-Key": str(uuid.uuid4()),
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(
+        YOOKASSA_API,
+        json=payload,
+        headers=headers,
+        auth=HTTPBasicAuth(SHOP_ID, SECRET_KEY),
+        timeout=10
+    )
+
+    response.raise_for_status()
+    return response.json()
