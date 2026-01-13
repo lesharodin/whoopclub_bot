@@ -148,6 +148,7 @@ async def create_payment_api(payload: dict):
     payment = yk_create_payment(
         amount=amount,
         description=description,
+        user_id=user_id,
         slot_id=slot_id
     )
 
@@ -156,7 +157,7 @@ async def create_payment_api(payload: dict):
     # 2️⃣ сохраняем в test.db
     conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
     cursor = conn.cursor()
-
+    
     cursor.execute("""
         INSERT INTO payments (
             slot_id,
