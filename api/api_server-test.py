@@ -186,7 +186,32 @@ async def create_payment_api(payload: dict):
         "id": payment_id,
         "confirmation": payment["confirmation"]
     }
+@app.get("/api/payment_status/{payment_id}")
+def payment_status(payment_id: str):
+    conn = sqlite3.connect(os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "database",
+        "test.db"
+    ))
+    cursor = conn.cursor()
 
+    cursor.execute("""
+        SELECT status
+        FROM payments
+        WHERE yookassa_payment_id = ?
+    """, (payment_id,))
+
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        return {"exists": False}
+
+    return {
+        "exists": True,
+        "status": row[0],
+        "paid": row[0] == "succeeded"
+    }
 
 
 def create_yookassa_payment(slot_id: int, amount: int, description: str):
