@@ -302,7 +302,7 @@ def create_yookassa_payment(
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": YOOKASSA_RETURN_URL
+            "return_url": RETURN_URL
         },
         "payment_method_data": {
             "type": "bank_card"
