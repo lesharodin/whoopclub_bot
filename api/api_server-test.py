@@ -5,6 +5,8 @@ import os
 import hmac
 import hashlib
 import json
+from handlers.yookassa import create_payment as yk_create_payment
+
 
 YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET")
 
@@ -143,7 +145,7 @@ async def create_payment_api(payload: dict):
     description = payload.get("description", "Оплата тренировки WhoopClub (TEST)")
 
     # 1️⃣ создаём платёж в ЮKassa
-    payment = create_payment(
+    payment = yk_create_payment(
         amount=amount,
         description=description,
         slot_id=slot_id
