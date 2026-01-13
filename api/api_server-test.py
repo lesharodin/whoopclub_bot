@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import json
 import requests
+from requests.auth import HTTPBasicAuth
 YOOKASSA_API = "https://api.yookassa.ru/v3/payments"
 SHOP_ID = os.getenv("YOOKASSA_TEST_SHOP_ID")
 SECRET_KEY = os.getenv("YOOKASSA_TEST_SECRET_KEY")
@@ -217,7 +218,7 @@ def create_yookassa_payment(slot_id: int, amount: int, description: str):
         YOOKASSA_API,
         json=payload,
         headers=headers,
-        auth=(SHOP_ID, SECRET_KEY),
+        auth=HTTPBasicAuth(SHOP_ID, SECRET_KEY),
         timeout=10
     )
 
