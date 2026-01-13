@@ -194,12 +194,16 @@ def get_slot_status(slot_id: int):
 
 @app.post("/api/create_payment")
 async def create_payment_api(payload: dict):
-    entity_type = payload["entity_type"]          # 'slot' | 'subscription'
-    entity_id = int(payload["entity_id"])
-    user_id = int(payload["user_id"])
-    amount = int(payload["amount"])
-    description = payload.get("description", "Оплата (TEST)")
+    try:
+        entity_type = payload["entity_type"]          # 'slot' | 'subscription'
+        entity_id = int(payload["entity_id"])
+        user_id = int(payload["user_id"])
+        amount = int(payload["amount"])
+        description = payload.get("description", "Оплата (TEST)")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
 
+    # 1️⃣ создаём платёж в YooKassa
     payment = create_yookassa_payment(
         entity_type=entity_type,
         entity_id=entity_id,
@@ -207,10 +211,25 @@ async def create_payment_api(payload: dict):
         description=description
     )
 
+    # 2️⃣ защита от None / битого ответа
+    if not payment or "id" not in payment or "confirmation" not in payment:
+        raise HTTPException(
+            status_code=502,
+            detail="YooKassa payment creation failed"
+        )
+
     payment_id = payment["id"]
 
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
+    # 3️⃣ сохраняем платёж в БД
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "database",
+        "test.db"
+    )
+
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+
     cursor.execute("""
         INSERT INTO payments (
             entity_type,
@@ -231,9 +250,11 @@ async def create_payment_api(payload: dict):
         "yookassa",
         datetime.now().isoformat()
     ))
+
     conn.commit()
     conn.close()
 
+    # 4️⃣ отдаём клиенту только нужное
     return {
         "id": payment_id,
         "confirmation": payment["confirmation"]
