@@ -5,7 +5,10 @@ import os
 import hmac
 import hashlib
 import json
-from handlers.yookassa import create_payment as yk_create_payment
+YOOKASSA_API = "https://api.yookassa.ru/v3/payments"
+SHOP_ID = os.getenv("YOOKASSA_TEST_SHOP_ID")
+SECRET = os.getenv("YOOKASSA_TEST_SECRET_KEY")
+RETURN_URL = os.getenv("YOOKASSA_RETURN_URL")
 
 
 YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET")
@@ -144,45 +147,61 @@ async def create_payment_api(payload: dict):
     amount = int(payload["amount"])
     description = payload.get("description", "Оплата тренировки WhoopClub (TEST)")
 
-    # 1️⃣ создаём платёж в ЮKassa
-    payment = yk_create_payment(
+    payment = create_yookassa_test_payment(
+        slot_id=slot_id,
         amount=amount,
-        description=description,
-        user_id=user_id,
-        slot_id=slot_id
+        description=description
     )
 
     payment_id = payment["id"]
 
-    # 2️⃣ сохраняем в test.db
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
+    conn = sqlite3.connect("database/test.db")
     cursor = conn.cursor()
-    
     cursor.execute("""
         INSERT INTO payments (
-            slot_id,
-            user_id,
-            yookassa_payment_id,
-            amount,
-            payment_method,
-            status,
-            created_at
+            slot_id, user_id, yookassa_payment_id,
+            amount, payment_method, status, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
-        slot_id,
-        user_id,
-        payment_id,
-        amount,
-        "yookassa",
-        "pending",
+        slot_id, user_id, payment_id,
+        amount, "yookassa", "pending",
         datetime.now().isoformat()
     ))
-
     conn.commit()
     conn.close()
 
     return {
-        "payment_id": payment_id,
-        "confirmation_url": payment["confirmation"]["confirmation_url"]
+        "id": payment_id,
+        "confirmation": payment["confirmation"]
     }
 
+
+def create_yookassa_test_payment(slot_id: int, amount: int, description: str):
+    payload = {
+        "amount": {
+            "value": f"{amount:.2f}",
+            "currency": "RUB"
+        },
+        "confirmation": {
+            "type": "redirect",
+            "return_url": RETURN_URL
+        },
+        "capture": True,
+        "description": description,
+        "metadata": {
+            "slot_id": str(slot_id)
+        },
+        "payment_method_data": {
+            "type": "bank_card"
+        }
+    }
+
+    r = requests.post(
+        YOOKASSA_API,
+        json=payload,
+        auth=(SHOP_ID, SECRET),
+        headers={"Idempotence-Key": str(uuid.uuid4())},
+        timeout=15
+    )
+    r.raise_for_status()
+    return r.json()

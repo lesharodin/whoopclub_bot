@@ -95,12 +95,25 @@ def _create_payment_prod(slot_id: int, user_id: int, amount: int, description: s
     }
 
 
-def create_payment(slot_id: int, user_id: int, amount: int, description: str):
-    if ENV == "TEST":
-        return _create_payment_test(slot_id, user_id, amount, description)
+#def create_payment(slot_id: int, user_id: int, amount: int, description: str):
+#    if ENV == "TEST":
+#        return _create_payment_test(slot_id, user_id, amount, description)
+#
+#    if ENV == "PROD":
+#        return _create_payment_prod(slot_id, user_id, amount, description)
+#
+#    raise RuntimeError(f"Unknown ENV={ENV}")
 
-    if ENV == "PROD":
-        return _create_payment_prod(slot_id, user_id, amount, description)
-
-    raise RuntimeError(f"Unknown ENV={ENV}")
-
+def create_payment(*, slot_id: int, user_id: int, amount: int, description: str):
+    resp = requests.post(
+        f"{TEST_API_URL}/api/create_payment",
+        json={
+            "slot_id": slot_id,
+            "user_id": user_id,
+            "amount": amount,
+            "description": description
+        },
+        timeout=15
+    )
+    resp.raise_for_status()
+    return resp.json()
