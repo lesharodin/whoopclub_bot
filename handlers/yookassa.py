@@ -104,11 +104,19 @@ def _create_payment_prod(slot_id: int, user_id: int, amount: int, description: s
 #
 #    raise RuntimeError(f"Unknown ENV={ENV}")
 
-def create_payment(slot_id: int, user_id: int, amount: int, description: str):
+def create_payment(
+    *,
+    entity_type: str,        # 'slot' | 'subscription'
+    entity_id: int,          # slot_id | subscription_id
+    user_id: int,
+    amount: int,
+    description: str
+):
     resp = requests.post(
         f"{TEST_API_URL}/api/create_payment",
         json={
-            "slot_id": slot_id,
+            "entity_type": entity_type,
+            "entity_id": entity_id,
             "user_id": user_id,
             "amount": amount,
             "description": description

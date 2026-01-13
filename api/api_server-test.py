@@ -79,12 +79,25 @@ async def yookassa_webhook(request: Request):
     payment_id = payment["id"]
     metadata = payment.get("metadata", {})
 
-    slot_id = int(metadata.get("slot_id"))
+    entity_type = metadata.get("entity_type")   # 'slot' | 'subscription'
+    entity_id = metadata.get("entity_id")       # id слота или подписки
 
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "test.db"))
+    if not entity_type or not entity_id:
+        print("[YOOKASSA] missing entity metadata:", metadata)
+        return {"ok": True}
+
+    entity_id = int(entity_id)
+
+    conn = sqlite3.connect(
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "database",
+            "test.db"
+        )
+    )
     cursor = conn.cursor()
 
-    # 1️⃣ Проверяем, есть ли платёж и не обработан ли он
+    # 1️⃣ проверяем платёж
     cursor.execute("""
         SELECT status FROM payments
         WHERE yookassa_payment_id = ?
@@ -101,7 +114,7 @@ async def yookassa_webhook(request: Request):
         conn.close()
         return {"ok": True}
 
-    # 2️⃣ Обновляем платёж
+    # 2️⃣ помечаем платёж как успешный
     cursor.execute("""
         UPDATE payments
         SET status = 'succeeded',
@@ -109,19 +122,55 @@ async def yookassa_webhook(request: Request):
         WHERE yookassa_payment_id = ?
     """, (datetime.now().isoformat(), payment_id))
 
-    # 3️⃣ Подтверждаем слот
-    cursor.execute("""
-        UPDATE slots
-        SET status = 'confirmed'
-        WHERE id = ?
-    """, (slot_id,))
+    # 3️⃣ логика по типу сущности
+    if entity_type == "slot":
+        cursor.execute("""
+            UPDATE slots
+            SET status = 'confirmed'
+            WHERE id = ?
+        """, (entity_id,))
+        print(f"[YOOKASSA] slot {entity_id} confirmed")
+
+    elif entity_type == "subscription":
+        cursor.execute("""
+            SELECT user_id, count
+            FROM subscriptions
+            WHERE id = ? AND status = 'pending'
+        """, (entity_id,))
+        sub = cursor.fetchone()
+
+        if not sub:
+            print(f"[YOOKASSA] subscription {entity_id} not found or already processed")
+            conn.commit()
+            conn.close()
+            return {"ok": True}
+
+        user_id, count = sub
+
+        cursor.execute("""
+            UPDATE subscriptions
+            SET status = 'confirmed'
+            WHERE id = ?
+        """, (entity_id,))
+
+        cursor.execute("""
+            UPDATE users
+            SET subscription = COALESCE(subscription, 0) + ?
+            WHERE user_id = ?
+        """, (count, user_id))
+
+        print(f"[YOOKASSA] subscription {entity_id} confirmed (+{count})")
+
+    else:
+        print("[YOOKASSA] unknown entity_type:", entity_type)
 
     conn.commit()
     conn.close()
 
-    print(f"[YOOKASSA] slot {slot_id} confirmed")
-
     return {"ok": True}
+
+
+    
 
 
 @app.get("/api/slot_status/{slot_id}")
@@ -145,13 +194,15 @@ def get_slot_status(slot_id: int):
 
 @app.post("/api/create_payment")
 async def create_payment_api(payload: dict):
-    slot_id = int(payload["slot_id"])
+    entity_type = payload["entity_type"]          # 'slot' | 'subscription'
+    entity_id = int(payload["entity_id"])
     user_id = int(payload["user_id"])
     amount = int(payload["amount"])
-    description = payload.get("description", "Оплата тренировки WhoopClub (TEST)")
+    description = payload.get("description", "Оплата (TEST)")
 
     payment = create_yookassa_payment(
-        slot_id=slot_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
         amount=amount,
         description=description
     )
@@ -162,21 +213,22 @@ async def create_payment_api(payload: dict):
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO payments (
-            slot_id,
+            entity_type,
+            entity_id,
             user_id,
             yookassa_payment_id,
             amount,
             payment_method,
             status,
             created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
     """, (
-        slot_id,
+        entity_type,
+        entity_id,
         user_id,
         payment_id,
         amount,
         "yookassa",
-        "pending",
         datetime.now().isoformat()
     ))
     conn.commit()
@@ -186,6 +238,7 @@ async def create_payment_api(payload: dict):
         "id": payment_id,
         "confirmation": payment["confirmation"]
     }
+
 @app.get("/api/payment_status/{payment_id}")
 def payment_status(payment_id: str):
     conn = sqlite3.connect(os.path.join(
@@ -214,7 +267,12 @@ def payment_status(payment_id: str):
     }
 
 
-def create_yookassa_payment(slot_id: int, amount: int, description: str):
+def create_yookassa_payment(
+    entity_type: str,
+    entity_id: int,
+    amount: int,
+    description: str
+):
     payload = {
         "amount": {
             "value": f"{amount:.2f}",
@@ -230,22 +288,7 @@ def create_yookassa_payment(slot_id: int, amount: int, description: str):
         },
         "description": description,
         "metadata": {
-            "slot_id": str(slot_id)
+            "entity_type": entity_type,
+            "entity_id": str(entity_id)
         }
     }
-
-    headers = {
-        "Idempotence-Key": str(uuid.uuid4()),
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(
-        YOOKASSA_API,
-        json=payload,
-        headers=headers,
-        auth=HTTPBasicAuth(SHOP_ID, SECRET_KEY),
-        timeout=10
-    )
-
-    response.raise_for_status()
-    return response.json()
