@@ -259,6 +259,44 @@ async def create_payment_api(payload: dict):
         "id": payment_id,
         "confirmation": payment["confirmation"]
     }
+@app.post("/api/create_subscription")
+async def create_subscription_api(payload: dict):
+    try:
+        user_id = int(payload["user_id"])
+        count = int(payload["count"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "database",
+        "test.db"
+    )
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO subscriptions (
+            user_id,
+            count,
+            status,
+            created_at,
+            notified
+        ) VALUES (?, ?, 'pending', ?, 0)
+    """, (
+        user_id,
+        count,
+        datetime.now().isoformat()
+    ))
+
+    subscription_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+
+    return {
+        "subscription_id": subscription_id
+    }
 
 @app.get("/api/payment_status/{payment_id}")
 def payment_status(payment_id: str):

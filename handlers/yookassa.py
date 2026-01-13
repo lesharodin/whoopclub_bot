@@ -126,3 +126,16 @@ def create_payment(
     )
     resp.raise_for_status()
     return resp.json()
+
+def create_subscription(*, user_id: int, count: int):
+    resp = requests.post(
+        f"{TEST_API_URL}/api/create_subscription",
+        json={
+            "user_id": user_id,
+            "count": count
+        },
+        timeout=10
+    )
+    resp.raise_for_status()
+    return resp.json()
+
