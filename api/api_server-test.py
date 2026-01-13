@@ -287,7 +287,7 @@ def payment_status(payment_id: str):
         "paid": row[0] == "succeeded"
     }
 
-def create_payment(
+def create_yookassa_payment(
     *,
     entity_type: str,        # 'slot' | 'subscription'
     entity_id: int,
