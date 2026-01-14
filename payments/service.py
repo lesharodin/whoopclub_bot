@@ -88,10 +88,10 @@ def create_payment(
         }
     }
 
-#    if payment_method == "sbp":
-#        payload["payment_method_data"] = {"type": "sbp"}
-#    else:
-#        payload["payment_method_data"] = {"type": "bank_card"}
+    if payment_method == "sbp":
+        payload["payment_method_data"] = {"type": "sbp"}
+    else:
+        payload["payment_method_data"] = {"type": "bank_card"}
 
     headers = {
         "Idempotence-Key": str(uuid.uuid4()),
