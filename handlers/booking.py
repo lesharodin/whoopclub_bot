@@ -381,6 +381,7 @@ async def reserve_slot(callback: CallbackQuery):
 
     elif payment_type == "yookassa":
         # 1️⃣ создаём payment СРАЗУ
+        payer = f"@{username}" if username else full_name
         payment_url = create_payment(
             user_id=user_id,
             amount=1,
@@ -389,7 +390,6 @@ async def reserve_slot(callback: CallbackQuery):
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id,  # временно, обновим ниже
             payment_method="sbp",
-            payer = f"@{username}" if username else full_name,
             description = f"WhoopClub | slot:{slot_id} | {payer}"
         )
 
