@@ -380,11 +380,24 @@ async def reserve_slot(callback: CallbackQuery):
             )
 
     elif payment_type == "yookassa":
+        # 1️⃣ создаём payment СРАЗУ
+        payment_url = create_payment(
+            user_id=user_id,
+            amount=1,
+            target_type="slot",
+            target_id=slot_id,
+            chat_id=callback.message.chat.id,
+            message_id=callback.message.message_id,  # временно, обновим ниже
+            payment_method="sbp",
+            description="Тренировка WhoopClub"
+        )
+
+        # 2️⃣ клавиатура С РЕАЛЬНЫМ URL
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="💳 Оплатить (СБП)",
-                    url="about:blank"  # временно
+                    url=payment_url
                 )
             ],
             [
@@ -395,6 +408,7 @@ async def reserve_slot(callback: CallbackQuery):
             ]
         ])
 
+        # 3️⃣ редактируем сообщение
         msg = await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n\n"
@@ -404,20 +418,15 @@ async def reserve_slot(callback: CallbackQuery):
             parse_mode="HTML"
         )
 
-        payment_url = create_payment(
-            user_id=user_id,
-            amount=1,
-            target_type="slot",
-            target_id=slot_id,
-            chat_id=msg.chat.id,
-            message_id=msg.message_id,
-            payment_method="sbp",
-            description="Тренировка WhoopClub"
-        )
+        # 4️⃣ обновляем message_id в payments (ВАЖНО)
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE payments SET message_id = ? WHERE target_type='slot' AND target_id = ? AND status='pending'",
+                (msg.message_id, slot_id)
+            )
+            conn.commit()
 
-        # 🔁 обновляем кнопку оплаты на реальный URL
-        keyboard.inline_keyboard[0][0].url = payment_url
-        await msg.edit_reply_markup(reply_markup=keyboard)
 
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
