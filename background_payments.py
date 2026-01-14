@@ -111,13 +111,13 @@ async def handle_slot_payment(
         parse_mode="HTML"
     )
 
-    # 2️⃣ уведомляем пользователя (дублируем на всякий случай)
-    await bot.send_message(
-        user_id,
-        f"✅ Ваша запись подтверждена!\n"
-        f"📅 {date_fmt}\n"
-        f"🏁 {group_label}, канал {channel}"
-    )
+#   # 2️⃣ уведомляем пользователя (дублируем на всякий случай)
+#   await bot.send_message(
+#       user_id,
+#       f"✅ Ваша запись подтверждена!\n"
+#       f"📅 {date_fmt}\n"
+#       f"🏁 {group_label}, канал {channel}"
+#   )
 
     # 3️⃣ считаем свободные места
     with get_connection() as conn:
@@ -197,21 +197,24 @@ async def handle_subscription_payment(
         parse_mode="HTML"
     )
 
-    # 2️⃣ пользователю
-    await bot.send_message(
-        user_id,
-        f"✅ Абонемент активирован\n"
-        f"📦 +{count}\n"
-        f"🎟 Всего доступно: {total}"
-    )
+    # 2️⃣ получаем display_name (КАК В СЛОТАХ)
+    try:
+        chat_member = await bot.get_chat_member(user_id, user_id)
+        display_name = (
+            f"@{chat_member.user.username}"
+            if chat_member.user.username
+            else chat_member.user.full_name
+        )
+    except:
+        display_name = f"ID {user_id}"
 
-    # 3️⃣ админам
+    # 3️⃣ уведомление админам
     for admin in ADMINS:
         await bot.send_message(
             admin,
             (
                 f"🎟 <b>Оплачен абонемент</b>\n"
-                f"👤 User ID: <code>{user_id}</code>\n"
+                f"👤 {display_name}\n"
                 f"📦 Куплено: <b>{count}</b>\n"
                 f"📊 Всего: <b>{total}</b>\n"
                 f"🧾 Payment ID: <code>{payment_id}</code>"

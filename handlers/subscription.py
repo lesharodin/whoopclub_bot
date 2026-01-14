@@ -8,7 +8,7 @@ from payments.service import create_payment
 router = Router()
 
 PRICES = {
-    5: 1,
+    5: 4800,
     10: 9000
 }
 
