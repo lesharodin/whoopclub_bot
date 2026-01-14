@@ -65,14 +65,6 @@ async def process_subscription(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-    await callback.message.edit_text(
-        f"🎟 <b>Абонемент</b>\n"
-        f"📦 {count} тренировок\n"
-        f"💰 {price} ₽\n\n"
-        f"💳 <a href='{payment_url}'>Оплатить через СБП</a>",
-        parse_mode="HTML"
-    )
-
 #Ручная оплата
 #@router.callback_query(F.data.startswith("sub:"))
 #async def process_subscription(callback: CallbackQuery):
