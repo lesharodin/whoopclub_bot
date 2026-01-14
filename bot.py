@@ -7,7 +7,6 @@ from handlers import registration, profile, admin, booking, participants, subscr
 from database.db import init_db
 from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
 from background_tasks import monitor_pending_slots, check_and_send_progrev, monitor_full_trainings
-from background_payments import payments_ui_watcher, handle_slot_payment
 
 
 bot = Bot(
@@ -41,8 +40,6 @@ async def on_startup(bot: Bot):
     asyncio.create_task(monitor_pending_slots(bot))
     asyncio.create_task(check_and_send_progrev(bot))
     asyncio.create_task(monitor_full_trainings(bot))
-    asyncio.create_task(payments_ui_watcher(bot))
-    asyncio.create_task(handle_slot_payment(bot))
 
 if __name__ == "__main__":
     asyncio.run(main())
