@@ -383,7 +383,7 @@ async def reserve_slot(callback: CallbackQuery):
         # 1️⃣ создаём payment СРАЗУ
         payment_url = create_payment(
             user_id=user_id,
-            amount=1,
+            amount=1000,
             target_type="slot",
             target_id=slot_id,
             chat_id=callback.message.chat.id,
