@@ -25,7 +25,7 @@ def create_payment(
     target_id: int,
     chat_id: int,
     message_id: int,
-    payment_method: str = "bank_card",
+    payment_method: str = "sbp",
     description: str | None = None,
 ) -> str:
     """
