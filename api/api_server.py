@@ -2,11 +2,7 @@ from fastapi import FastAPI, Query, HTTPException, Request
 import sqlite3
 from datetime import datetime
 import os
-import hmac
-import hashlib
 import json
-
-YOOKASSA_WEBHOOK_SECRET = os.getenv("YOOKASSA_WEBHOOK_SECRET")
 
 app = FastAPI()
 
@@ -57,60 +53,75 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
         for nickname, group, channel in cursor.fetchall()
     ]
 
+from payments.service import apply_payment
 @app.post("/yookassa/webhook")
 async def yookassa_webhook(request: Request):
     data = await request.json()
 
-    print("=== YOOKASSA WEBHOOK RECEIVED ===")
-    print(data)
-
     if data.get("event") != "payment.succeeded":
         return {"ok": True}
 
-    payment = data["object"]
-    payment_id = payment["id"]
-    metadata = payment.get("metadata", {})
+    payment_obj = data.get("object", {})
+    yk_payment_id = payment_obj.get("id")
+    metadata = payment_obj.get("metadata", {})
 
-    slot_id = int(metadata.get("slot_id"))
+    internal_payment_id = metadata.get("payment_id")
+    if not internal_payment_id:
+        return {"ok": True}
 
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "database",
+        "bot.db"
+    )
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # 1️⃣ Проверяем, есть ли платёж и не обработан ли он
     cursor.execute("""
-        SELECT status FROM payments
-        WHERE yookassa_payment_id = ?
-    """, (payment_id,))
-    row = cursor.fetchone()
+        SELECT *
+        FROM payments
+        WHERE id = ?
+    """, (internal_payment_id,))
+    payment = cursor.fetchone()
 
-    if not row:
-        print(f"[YOOKASSA] payment {payment_id} not found")
+    if not payment:
         conn.close()
         return {"ok": True}
 
-    if row[0] == "succeeded":
-        print(f"[YOOKASSA] payment {payment_id} already processed")
+    if payment["status"] == "succeeded":
         conn.close()
         return {"ok": True}
 
-    # 2️⃣ Обновляем платёж
     cursor.execute("""
         UPDATE payments
-        SET status = 'succeeded',
+        SET
+            status = 'succeeded',
+            yookassa_payment_id = ?,
             paid_at = ?
-        WHERE yookassa_payment_id = ?
-    """, (datetime.now().isoformat(), payment_id))
+        WHERE id = ? AND status != 'succeeded'
+    """, (
+        yk_payment_id,
+        datetime.now().isoformat(),
+        internal_payment_id
+    ))
 
-    # 3️⃣ Подтверждаем слот
-    cursor.execute("""
-        UPDATE slots
-        SET status = 'confirmed'
-        WHERE id = ?
-    """, (slot_id,))
+    if cursor.rowcount == 0:
+        conn.close()
+        return {"ok": True}
 
     conn.commit()
+
+    cursor.execute("""
+        SELECT *
+        FROM payments
+        WHERE id = ?
+    """, (internal_payment_id,))
+    payment = cursor.fetchone()
+
     conn.close()
 
-    print(f"[YOOKASSA] slot {slot_id} confirmed")
+    apply_payment(dict(payment))
 
     return {"ok": True}

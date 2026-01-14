@@ -4,6 +4,9 @@ from database.db import get_connection
 from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID, CARD
 from datetime import datetime, timedelta
 from logging_config import logger
+from payments.service import create_payment
+USE_YOOKASSA = True
+
 
 
 router = Router()
@@ -306,8 +309,12 @@ async def reserve_slot(callback: CallbackQuery):
         sub_row = cursor.fetchone()
         sub_count = sub_row[0] if sub_row else 0
 
-        payment_type = "subscription" if sub_count > 0 else "manual"
-        status = "confirmed" if payment_type == "subscription" else "pending"
+        if sub_count > 0:
+            payment_type = "subscription"
+            status = "confirmed"
+        else:
+            payment_type = "yookassa" if USE_YOOKASSA else "manual"
+            status = "pending"
 
         # Регистрируем слот
         cursor.execute("""
@@ -371,6 +378,46 @@ async def reserve_slot(callback: CallbackQuery):
                 f"🎟 Осталось абонементов: <b>{sub_left}</b>",
                 parse_mode="HTML"
             )
+
+    elif payment_type == "yookassa":
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="💳 Оплатить (СБП)",
+                    url="about:blank"  # временно
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменить запись",
+                    callback_data=f"user_cancel_pending:{slot_id}"
+                )
+            ]
+        ])
+
+        msg = await callback.message.edit_text(
+            f"📅 <b>Тренировка {date_fmt}</b>\n"
+            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n\n"
+            f"💳 Оплатите участие через СБП.\n"
+            f"⏳ Запись будет подтверждена автоматически после оплаты.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+
+        payment_url = create_payment(
+            user_id=user_id,
+            amount=1,
+            target_type="slot",
+            target_id=slot_id,
+            chat_id=msg.chat.id,
+            message_id=msg.message_id,
+            payment_method="sbp",
+            description="Тренировка WhoopClub"
+        )
+
+        # 🔁 обновляем кнопку оплаты на реальный URL
+        keyboard.inline_keyboard[0][0].url = payment_url
+        await msg.edit_reply_markup(reply_markup=keyboard)
 
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
