@@ -3,6 +3,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from database.db import get_connection
 from config import ADMINS, PAYMENT_LINK, CARD
 from datetime import datetime
+from payments.service import create_payment
 
 router = Router()
 
