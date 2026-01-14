@@ -383,13 +383,14 @@ async def reserve_slot(callback: CallbackQuery):
         # 1️⃣ создаём payment СРАЗУ
         payment_url = create_payment(
             user_id=user_id,
-            amount=1000,
+            amount=1,
             target_type="slot",
             target_id=slot_id,
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id,  # временно, обновим ниже
             payment_method="sbp",
-            description="Тренировка WhoopClub"
+            payer = f"@{username}" if username else full_name,
+            description = f"WhoopClub | slot:{slot_id} | {payer}"
         )
 
         # 2️⃣ клавиатура С РЕАЛЬНЫМ URL

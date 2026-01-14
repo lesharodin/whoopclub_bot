@@ -153,11 +153,12 @@ async def handle_slot_payment(
     for admin in ADMINS:
         await bot.send_message(
             admin,
-            f"💳 Оплата подтверждена автоматически:\n"
-            f"👤 {display_name} (ID {user_id})\n"
+        (    
+            f"✅ {display_name} записался через СБП:\n"
             f"📅 {date_fmt}\n"
-            f"🏁 {group_label}\n"
-            f"📡 {channel}",
+            f"🏁 <b>{group_label}</b>\n"
+            f"📡 Канал: <b>{channel}</b>\n"
+        ),
             parse_mode="HTML"
         )
 async def handle_subscription_payment(
