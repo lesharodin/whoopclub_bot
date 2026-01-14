@@ -381,8 +381,6 @@ async def reserve_slot(callback: CallbackQuery):
 
     elif payment_type == "yookassa":
         # 1️⃣ создаём payment СРАЗУ
-        print("YOOKASSA_SHOP_ID =", YOOKASSA_SHOP_ID)
-        print("YOOKASSA_SECRET_KEY =", YOOKASSA_SECRET_KEY[:6], "...")
         payment_url = create_payment(
             user_id=user_id,
             amount=1,
