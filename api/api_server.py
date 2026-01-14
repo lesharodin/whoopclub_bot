@@ -114,23 +114,3 @@ async def yookassa_webhook(request: Request):
     print(f"[YOOKASSA] slot {slot_id} confirmed")
 
     return {"ok": True}
-
-
-@app.get("/api/slot_status/{slot_id}")
-def get_slot_status(slot_id: int):
-    conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.dirname(__file__)), "database", "bot.db"))
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT status FROM slots WHERE id = ?
-    """, (slot_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Slot not found")
-
-    return {
-        "slot_id": slot_id,
-        "status": row[0]
-    }
