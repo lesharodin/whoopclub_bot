@@ -19,7 +19,8 @@ async def show_subscription_options(message: Message):
             InlineKeyboardButton(text="10 тренировок -10% 7200₽", callback_data="sub:10")
         ]
     ])
-    await message.answer("Выберите абонемент:", reply_markup=keyboard)
+    ##await message.answer("Выберите абонемент:", reply_markup=keyboard)
+    await message.answer("Покупка абонементов временно не доступна")
 
 @router.callback_query(F.data.startswith("sub:"))
 async def process_subscription(callback: CallbackQuery):
