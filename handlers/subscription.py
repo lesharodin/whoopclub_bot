@@ -7,20 +7,19 @@ from datetime import datetime
 router = Router()
 
 PRICES = {
-    5: 3800,
-    10: 7200
+    5: 4800,
+    10: 9000
 }
 
 @router.message(F.text.contains("Купить абонемент"))
 async def show_subscription_options(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="5 тренировок -5% 3800₽", callback_data="sub:5"),
-            InlineKeyboardButton(text="10 тренировок -10% 7200₽", callback_data="sub:10")
+            InlineKeyboardButton(text="5 тренировок -4% 4800₽", callback_data="sub:5"),
+            InlineKeyboardButton(text="10 тренировок -10% 9000₽", callback_data="sub:10")
         ]
     ])
-    ##await message.answer("Выберите абонемент:", reply_markup=keyboard)
-    await message.answer("Покупка абонементов временно не доступна")
+    await message.answer("Выберите абонемент:", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("sub:"))
 async def process_subscription(callback: CallbackQuery):
