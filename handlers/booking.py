@@ -379,54 +379,54 @@ async def reserve_slot(callback: CallbackQuery):
                 parse_mode="HTML"
             )
 
-    elif payment_type == "yookassa":
-        # 1️⃣ создаём payment СРАЗУ
-        payment_url = create_payment(
-            user_id=user_id,
-            amount=1,
-            target_type="slot",
-            target_id=slot_id,
-            chat_id=callback.message.chat.id,
-            message_id=callback.message.message_id,  # временно, обновим ниже
-            payment_method="sbp",
-            description="Тренировка WhoopClub"
-        )
-
-        # 2️⃣ клавиатура С РЕАЛЬНЫМ URL
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="💳 Оплатить (СБП)",
-                    url=payment_url
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="❌ Отменить запись",
-                    callback_data=f"user_cancel_pending:{slot_id}"
-                )
-            ]
-        ])
-
-        # 3️⃣ редактируем сообщение
-        msg = await callback.message.edit_text(
-            f"📅 <b>Тренировка {date_fmt}</b>\n"
-            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n\n"
-            f"💳 Оплатите участие через СБП.\n"
-            f"⏳ Запись будет подтверждена автоматически после оплаты.",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
-
-        # 4️⃣ обновляем message_id в payments (ВАЖНО)
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE payments SET message_id = ? WHERE target_type='slot' AND target_id = ? AND status='pending'",
-                (msg.message_id, slot_id)
-            )
-            conn.commit()
-
+#    elif payment_type == "yookassa":
+#        # 1️⃣ создаём payment СРАЗУ
+#        payment_url = create_payment(
+#            user_id=user_id,
+#            amount=1,
+#            target_type="slot",
+#            target_id=slot_id,
+#            chat_id=callback.message.chat.id,
+#            message_id=callback.message.message_id,  # временно, обновим ниже
+#            payment_method="sbp",
+#            description="Тренировка WhoopClub"
+#        )
+#
+#        # 2️⃣ клавиатура С РЕАЛЬНЫМ URL
+#        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+#            [
+#                InlineKeyboardButton(
+#                    text="💳 Оплатить (СБП)",
+#                    url=payment_url
+#                )
+#            ],
+#            [
+#                InlineKeyboardButton(
+#                    text="❌ Отменить запись",
+#                    callback_data=f"user_cancel_pending:{slot_id}"
+#                )
+#            ]
+#        ])
+#
+#        # 3️⃣ редактируем сообщение
+#        msg = await callback.message.edit_text(
+#            f"📅 <b>Тренировка {date_fmt}</b>\n"
+#            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n\n"
+#            f"💳 Оплатите участие через СБП.\n"
+#            f"⏳ Запись будет подтверждена автоматически после оплаты.",
+#            reply_markup=keyboard,
+#            parse_mode="HTML"
+#        )
+#
+#        # 4️⃣ обновляем message_id в payments (ВАЖНО)
+#        with get_connection() as conn:
+#            cursor = conn.cursor()
+#            cursor.execute(
+#                "UPDATE payments SET message_id = ? WHERE target_type='slot' AND target_id = ? AND status='pending'",
+#                (msg.message_id, slot_id)
+#            )
+#            conn.commit()
+#
 
     else:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
