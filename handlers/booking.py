@@ -390,7 +390,7 @@ async def reserve_slot(callback: CallbackQuery):
             chat_id=callback.message.chat.id,
             message_id=callback.message.message_id,  # временно, обновим ниже
             payment_method="sbp",
-            description = f"WhoopClub | slot:{slot_id} | {payer}"
+            description = f"WhoopClub разовая тренировка| slot:{slot_id} | {payer}"
         )
 
         # 2️⃣ клавиатура С РЕАЛЬНЫМ URL

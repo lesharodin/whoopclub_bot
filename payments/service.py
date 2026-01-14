@@ -203,7 +203,6 @@ def activate_subscription(subscription_id: int):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # 1️⃣ получаем подписку
     cursor.execute("""
         SELECT user_id, count, status
         FROM subscriptions
@@ -213,35 +212,35 @@ def activate_subscription(subscription_id: int):
 
     if not row:
         conn.close()
-        logger.error(
-            f"[activate_subscription] subscription {subscription_id} not found"
-        )
         return
 
     user_id, count, status = row
-
     if status == "confirmed":
-        # идемпотентность
         conn.close()
         return
 
-    # 2️⃣ подтверждаем подписку
     cursor.execute("""
         UPDATE subscriptions
         SET status = 'confirmed'
         WHERE id = ?
     """, (subscription_id,))
 
-    # 3️⃣ начисляем тренировки
     cursor.execute("""
         UPDATE users
         SET subscription = COALESCE(subscription, 0) + ?
         WHERE user_id = ?
     """, (count, user_id))
 
+    cursor.execute("""
+        SELECT subscription
+        FROM users
+        WHERE user_id = ?
+    """, (user_id,))
+    total = cursor.fetchone()[0]
+
     conn.commit()
     conn.close()
 
     logger.info(
-        f"[activate_subscription] subscription {subscription_id} activated for user {user_id}"
+        f"[activate_subscription] sub {subscription_id} +{count}, total={total}"
     )

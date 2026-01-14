@@ -170,21 +170,51 @@ async def handle_subscription_payment(
     message_id: int,
     subscription_id: int
 ):
-    # аналогично: edit_message_text + уведомления
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.count, u.subscription
+            FROM subscriptions s
+            JOIN users u ON u.user_id = s.user_id
+            WHERE s.id = ?
+        """, (subscription_id,))
+        row = cursor.fetchone()
+
+    if not row:
+        return
+
+    count, total = row
+
+    # 1️⃣ обновляем сообщение оплаты
     await bot.edit_message_text(
         chat_id=chat_id,
         message_id=message_id,
-        text="✅ Абонемент успешно оплачен!",
+        text=(
+            f"🎟 <b>Абонемент оплачен</b>\n"
+            f"📦 Добавлено: <b>{count}</b>\n"
+            f"📊 Всего доступно: <b>{total}</b>"
+        ),
         parse_mode="HTML"
     )
 
+    # 2️⃣ пользователю
     await bot.send_message(
         user_id,
-        "🎟 Абонемент оплачен и активирован!"
+        f"✅ Абонемент активирован\n"
+        f"📦 +{count}\n"
+        f"🎟 Всего доступно: {total}"
     )
 
+    # 3️⃣ админам
     for admin in ADMINS:
         await bot.send_message(
             admin,
-            f"🎟 Абонемент оплачен пользователем ID {user_id}"
+            (
+                f"🎟 <b>Оплачен абонемент</b>\n"
+                f"👤 User ID: <code>{user_id}</code>\n"
+                f"📦 Куплено: <b>{count}</b>\n"
+                f"📊 Всего: <b>{total}</b>\n"
+                f"🧾 Payment ID: <code>{payment_id}</code>"
+            ),
+            parse_mode="HTML"
         )
