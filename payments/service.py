@@ -4,6 +4,7 @@ import requests
 from datetime import datetime
 from requests.auth import HTTPBasicAuth
 import os
+from logging_config import logger
 
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
@@ -24,7 +25,7 @@ def create_payment(
     target_id: int,
     chat_id: int,
     message_id: int,
-    payment_method: str = "sbp",
+    payment_method: str = "bank_card",
     description: str | None = None,
 ) -> str:
     """
