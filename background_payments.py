@@ -3,7 +3,7 @@ from datetime import datetime
 from database.db import get_connection
 from config import ADMINS, REQUIRED_CHAT_ID
 from logging_config import logger
-from booking import get_group_label, TOTAL_SLOTS
+from handlers.booking import get_group_label, TOTAL_SLOTS
 
 
 async def payments_ui_watcher(bot):
