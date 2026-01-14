@@ -67,7 +67,10 @@ def create_payment(
 
     payment_id = cursor.lastrowid
     conn.commit()
-
+    logger.info(
+    f"YooKassa request: shop_id={YOOKASSA_SHOP_ID}, "
+    f"secret_prefix={YOOKASSA_SECRET_KEY[:6] if YOOKASSA_SECRET_KEY else None}"
+)
     # 2️⃣ payload для Юкассы
     payload = {
         "amount": {
@@ -85,10 +88,10 @@ def create_payment(
         }
     }
 
-    if payment_method == "sbp":
-        payload["payment_method_data"] = {"type": "sbp"}
-    else:
-        payload["payment_method_data"] = {"type": "bank_card"}
+#    if payment_method == "sbp":
+#        payload["payment_method_data"] = {"type": "sbp"}
+#    else:
+#        payload["payment_method_data"] = {"type": "bank_card"}
 
     headers = {
         "Idempotence-Key": str(uuid.uuid4()),
