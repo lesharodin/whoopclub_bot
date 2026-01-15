@@ -154,10 +154,11 @@ async def handle_slot_payment(
         await bot.send_message(
             admin,
         (    
-            f"✅ {display_name} записался через СБП:\n"
+            f"✅ {display_name} записался на тренировку:\n"
             f"📅 {date_fmt}\n"
             f"🏁 <b>{group_label}</b>\n"
             f"📡 Канал: <b>{channel}</b>\n"
+            f"💳 Оплата СБП\n"
         ),
             parse_mode="HTML"
         )
