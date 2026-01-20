@@ -4,6 +4,9 @@ from database.db import get_connection
 from config import ADMINS, PAYMENT_LINK, REQUIRED_CHAT_ID, CARD
 from datetime import datetime, timedelta
 from logging_config import logger
+from payments.service import create_payment
+USE_YOOKASSA = True
+
 
 
 router = Router()
@@ -306,8 +309,12 @@ async def reserve_slot(callback: CallbackQuery):
         sub_row = cursor.fetchone()
         sub_count = sub_row[0] if sub_row else 0
 
-        payment_type = "subscription" if sub_count > 0 else "manual"
-        status = "confirmed" if payment_type == "subscription" else "pending"
+        if sub_count > 0:
+            payment_type = "subscription"
+            status = "confirmed"
+        else:
+            payment_type = "yookassa" if USE_YOOKASSA else "manual"
+            status = "pending"
 
         # Регистрируем слот
         cursor.execute("""
@@ -433,7 +440,6 @@ async def reserve_slot(callback: CallbackQuery):
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{group_label}</b>.\n"
-            f"💳 Пожалуйста, оплатите <b>1000₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"💳 Пожалуйста, оплатите <b>1000₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"Либо по номеру карты <code>{CARD}</code>\n"
             f"После оплаты нажмите кнопку ниже.",
