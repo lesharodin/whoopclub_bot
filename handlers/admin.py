@@ -647,14 +647,14 @@ async def list_abonement_users(message: Message):
 
 ADMIN_USER_IDS = (932407372, 132536948)
 
+ADMIN_USER_IDS = (932407372, 132536948)
+
 
 @router.message(F.text.startswith("/stats"))
 async def attendance_stats(message: Message):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
         return
-
-    print("STATS HANDLER CALLED")
 
     parts = message.text.strip().split(maxsplit=1)
     period = parts[1] if len(parts) > 1 else ""
@@ -670,7 +670,11 @@ async def attendance_stats(message: Message):
         if not period:
             title = "📊 Посещаемость за всё время"
             sql = f"""
-                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                SELECT
+                    u.nickname,
+                    COUNT(DISTINCT s.training_id) AS cnt,
+                    SUM(CASE WHEN s.payment_type = 'subscription' THEN 1 ELSE 0 END) AS sub_cnt,
+                    SUM(CASE WHEN s.payment_type != 'subscription' THEN 1 ELSE 0 END) AS one_cnt
                 FROM slots s
                 JOIN users u ON u.user_id = s.user_id
                 JOIN trainings t ON t.id = s.training_id
@@ -683,7 +687,11 @@ async def attendance_stats(message: Message):
         elif len(period) == 4 and period.isdigit():
             title = f"📊 Посещаемость за {period} год"
             sql = f"""
-                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                SELECT
+                    u.nickname,
+                    COUNT(DISTINCT s.training_id) AS cnt,
+                    SUM(CASE WHEN s.payment_type = 'subscription' THEN 1 ELSE 0 END) AS sub_cnt,
+                    SUM(CASE WHEN s.payment_type != 'subscription' THEN 1 ELSE 0 END) AS one_cnt
                 FROM slots s
                 JOIN users u ON u.user_id = s.user_id
                 JOIN trainings t ON t.id = s.training_id
@@ -697,7 +705,11 @@ async def attendance_stats(message: Message):
         elif len(period) == 7 and period[4] == "-":
             title = f"📊 Посещаемость за {period}"
             sql = f"""
-                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                SELECT
+                    u.nickname,
+                    COUNT(DISTINCT s.training_id) AS cnt,
+                    SUM(CASE WHEN s.payment_type = 'subscription' THEN 1 ELSE 0 END) AS sub_cnt,
+                    SUM(CASE WHEN s.payment_type != 'subscription' THEN 1 ELSE 0 END) AS one_cnt
                 FROM slots s
                 JOIN users u ON u.user_id = s.user_id
                 JOIN trainings t ON t.id = s.training_id
@@ -720,20 +732,31 @@ async def attendance_stats(message: Message):
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
-        
 
     if not rows:
         await message.answer("📭 Нет данных за выбранный период.")
         return
-    total_visits = sum(cnt for _, cnt in rows)
+
+    # --- агрегаты ---
+    total_visits = sum(cnt for _, cnt, _, _ in rows)
+    total_sub = sum(sub for _, _, sub, _ in rows)
+    total_one = sum(one for _, _, _, one in rows)
+
+    # --- вывод ---
     lines = [
-    title,
-    f"Всего посещений: <b>{total_visits}</b>",
-    ""
+        title,
+        f"Всего посещений: <b>{total_visits}</b>",
+        f"По абонементу: <b>{total_sub}</b>",
+        f"Разовые оплаты: <b>{total_one}</b>",
+        ""
     ]
-    for i, (nickname, cnt) in enumerate(rows, start=1):
+
+    for i, (nickname, cnt, sub_cnt, one_cnt) in enumerate(rows, start=1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "•"
-        lines.append(f"{medal} <b>{nickname or '—'}</b> — {cnt}")
+        lines.append(
+            f"{medal} <b>{nickname or '—'}</b> — {cnt} "
+            f"(або: {sub_cnt}, раз: {one_cnt})"
+        )
 
     for chunk in chunk_text_by_lines("\n".join(lines)):
         await message.answer(chunk, parse_mode=ParseMode.HTML)
