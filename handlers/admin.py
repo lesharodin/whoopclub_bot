@@ -653,7 +653,9 @@ async def attendance_stats(message: Message, command: CommandObject):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
         return
+    print("STATS HANDLER CALLED 1")
     period = (command.args or "").strip()  # "", "2025", "2025-01"
+    print("STATS HANDLER CALLED 2")
 
     with get_connection() as conn:
         cursor = conn.cursor()
