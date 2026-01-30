@@ -645,9 +645,10 @@ async def list_abonement_users(message: Message):
         except TelegramBadRequest:
             await message.answer(chunk)
 
-ADMIN_USER_IDS = (932407372, 132536948)
-
-ADMIN_USER_IDS = (932407372, 132536948)
+ADMIN_USER_IDS = (932407372, 132536948, 112177030)
+SLOTS_PER_TRAINING = 12
+RENT_PER_TRAINING = 5000
+ONE_TIME_PRICE = 1000
 
 
 @router.message(F.text.startswith("/stats"))
@@ -757,6 +758,94 @@ async def attendance_stats(message: Message):
             f"{medal} <b>{nickname or '—'}</b> — {cnt} "
             f"(або: {sub_cnt}, раз: {one_cnt})"
         )
+
+    for chunk in chunk_text_by_lines("\n".join(lines)):
+        await message.answer(chunk, parse_mode=ParseMode.HTML)
+@router.message(F.text.startswith("/finance"))
+async def finance_month(message: Message):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    parts = message.text.strip().split(maxsplit=1)
+    period = parts[1] if len(parts) > 1 else datetime.now().strftime("%Y-%m")
+
+    # валидация периода
+    if not (len(period) == 7 and period[4] == "-"):
+        await message.answer(
+            "❗ Неверный формат.\n"
+            "Используй:\n"
+            "• /finance\n"
+            "• /finance 2026-01"
+        )
+        return
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        # 1️⃣ тренировки месяца
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM trainings
+            WHERE status != 'cancelled'
+              AND strftime('%Y-%m', date) = ?
+        """, (period,))
+        trainings_count = cursor.fetchone()[0]
+
+        if trainings_count == 0:
+            await message.answer("📭 В этом месяце нет тренировок.")
+            return
+
+        # 2️⃣ слоты месяца (кроме админов)
+        cursor.execute("""
+            SELECT
+                COUNT(*) AS total_slots,
+                SUM(CASE WHEN s.payment_type = 'subscription' THEN 1 ELSE 0 END) AS sub_slots,
+                SUM(CASE WHEN s.payment_type != 'subscription' THEN 1 ELSE 0 END) AS one_slots
+            FROM slots s
+            JOIN trainings t ON t.id = s.training_id
+            WHERE t.status != 'cancelled'
+              AND strftime('%Y-%m', t.date) = ?
+              AND s.user_id NOT IN (?, ?)
+        """, (period, *ADMIN_USER_IDS))
+
+        total_slots, sub_slots, one_slots = cursor.fetchone()
+        sub_slots = sub_slots or 0
+        one_slots = one_slots or 0
+
+    # 3️⃣ расчёты
+    total_capacity = trainings_count * SLOTS_PER_TRAINING
+    free_slots = total_capacity - total_slots
+
+    rent_total = trainings_count * RENT_PER_TRAINING
+    income_one_time = one_slots * ONE_TIME_PRICE
+
+    balance = income_one_time - rent_total
+    need_to_break_even = max(0, (-balance + ONE_TIME_PRICE - 1) // ONE_TIME_PRICE)
+
+    # 4️⃣ вывод
+    lines = [
+        f"💰 <b>Финансовый отчёт — {period}</b>",
+        "",
+        f"📅 Тренировок: <b>{trainings_count}</b>",
+        f"🏠 Аренда: <b>{rent_total:,} ₽</b>",
+        "",
+        f"🎟 Платных слотов: <b>{total_capacity}</b>",
+        f"🟦 По абонементу: <b>{sub_slots}</b>",
+        f"🟩 Разовые оплаты: <b>{one_slots}</b>",
+        f"⬜ Свободные: <b>{free_slots}</b>",
+        "",
+        f"💵 Доход разовыми: <b>{income_one_time:,} ₽</b>",
+        f"📉 Баланс месяца: <b>{balance:,} ₽</b>",
+    ]
+
+    if balance < 0:
+        lines.append(
+            f"⚠️ Для выхода в ноль нужно ещё "
+            f"<b>{need_to_break_even}</b> разовых слотов"
+        )
+    else:
+        lines.append("✅ Месяц уже в плюсе")
 
     for chunk in chunk_text_by_lines("\n".join(lines)):
         await message.answer(chunk, parse_mode=ParseMode.HTML)
