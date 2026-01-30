@@ -720,12 +720,17 @@ async def attendance_stats(message: Message):
 
         cursor.execute(sql, params)
         rows = cursor.fetchall()
+        
 
     if not rows:
         await message.answer("📭 Нет данных за выбранный период.")
         return
-
-    lines = [title, ""]
+    total_visits = sum(cnt for _, cnt in rows)
+    lines = [
+    title,
+    f"Всего посещений: <b>{total_visits}</b>",
+    ""
+    ]
     for i, (nickname, cnt) in enumerate(rows, start=1):
         medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "•"
         lines.append(f"{medal} <b>{nickname or '—'}</b> — {cnt}")
