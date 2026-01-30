@@ -648,14 +648,13 @@ async def list_abonement_users(message: Message):
 ADMIN_USER_IDS = (932407372, 132536948)
 
 
-@admin_router.message(Command("stats"))
-async def attendance_stats(message: Message, command: CommandObject):
+@router.message(Command("stats"))
+async def attendance_stats(message: Message):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
         return
-
     period = (command.args or "").strip()  # "", "2025", "2025-01"
-
+    print("STATS HANDLER CALLED")
     with get_connection() as conn:
         cursor = conn.cursor()
 
