@@ -648,14 +648,16 @@ async def list_abonement_users(message: Message):
 ADMIN_USER_IDS = (932407372, 132536948)
 
 
-@router.message(Command("stats"))
-async def attendance_stats(message: Message, command: CommandObject):
+@router.message(F.text.startswith("/stats"))
+async def attendance_stats(message: Message):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
         return
-    print("STATS HANDLER CALLED 1")
-    period = (command.args or "").strip()  # "", "2025", "2025-01"
-    print("STATS HANDLER CALLED 2")
+
+    print("STATS HANDLER CALLED")
+
+    parts = message.text.strip().split(maxsplit=1)
+    period = parts[1] if len(parts) > 1 else ""
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -715,3 +717,18 @@ async def attendance_stats(message: Message, command: CommandObject):
                 "• /stats 2025-01"
             )
             return
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall()
+
+    if not rows:
+        await message.answer("📭 Нет данных за выбранный период.")
+        return
+
+    lines = [title, ""]
+    for i, (nickname, cnt) in enumerate(rows, start=1):
+        medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "•"
+        lines.append(f"{medal} <b>{nickname or '—'}</b> — {cnt}")
+
+    for chunk in chunk_text_by_lines("\n".join(lines)):
+        await message.answer(chunk, parse_mode=ParseMode.HTML)
