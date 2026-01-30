@@ -660,12 +660,14 @@ async def attendance_stats(message: Message):
     parts = message.text.strip().split(maxsplit=1)
     period = parts[1] if len(parts) > 1 else ""
 
+    admin_placeholders = ",".join("?" for _ in ADMIN_USER_IDS)
+
     with get_connection() as conn:
         cursor = conn.cursor()
 
-        base_where = """
+        base_where = f"""
             t.status != 'cancelled'
-            AND s.user_id NOT IN (?, ?)
+            AND s.user_id NOT IN ({admin_placeholders})
         """
 
         if not period:
@@ -683,7 +685,7 @@ async def attendance_stats(message: Message):
                 GROUP BY u.user_id
                 ORDER BY cnt DESC
             """
-            params = ADMIN_USER_IDS
+            params = (*ADMIN_USER_IDS,)
 
         elif len(period) == 4 and period.isdigit():
             title = f"📊 Посещаемость за {period} год"
@@ -701,7 +703,7 @@ async def attendance_stats(message: Message):
                 GROUP BY u.user_id
                 ORDER BY cnt DESC
             """
-            params = ADMIN_USER_IDS + (period,)
+            params = (*ADMIN_USER_IDS, period)
 
         elif len(period) == 7 and period[4] == "-":
             title = f"📊 Посещаемость за {period}"
@@ -719,7 +721,7 @@ async def attendance_stats(message: Message):
                 GROUP BY u.user_id
                 ORDER BY cnt DESC
             """
-            params = ADMIN_USER_IDS + (period,)
+            params = (*ADMIN_USER_IDS, period)
 
         else:
             await message.answer(
@@ -738,12 +740,10 @@ async def attendance_stats(message: Message):
         await message.answer("📭 Нет данных за выбранный период.")
         return
 
-    # --- агрегаты ---
     total_visits = sum(cnt for _, cnt, _, _ in rows)
     total_sub = sum(sub for _, _, sub, _ in rows)
     total_one = sum(one for _, _, _, one in rows)
 
-    # --- вывод ---
     lines = [
         title,
         f"Всего посещений: <b>{total_visits}</b>",
@@ -761,6 +761,7 @@ async def attendance_stats(message: Message):
 
     for chunk in chunk_text_by_lines("\n".join(lines)):
         await message.answer(chunk, parse_mode=ParseMode.HTML)
+
         
 @router.message(F.text.startswith("/finance"))
 async def finance_month(message: Message):
@@ -771,7 +772,6 @@ async def finance_month(message: Message):
     parts = message.text.strip().split(maxsplit=1)
     period = parts[1] if len(parts) > 1 else datetime.now().strftime("%Y-%m")
 
-    # валидация периода
     if not (len(period) == 7 and period[4] == "-"):
         await message.answer(
             "❗ Неверный формат.\n"
@@ -780,6 +780,8 @@ async def finance_month(message: Message):
             "• /finance 2026-01"
         )
         return
+
+    admin_placeholders = ",".join("?" for _ in ADMIN_USER_IDS)
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -798,7 +800,7 @@ async def finance_month(message: Message):
             return
 
         # 2️⃣ слоты месяца (кроме админов)
-        cursor.execute("""
+        sql = f"""
             SELECT
                 COUNT(*) AS total_slots,
                 SUM(CASE WHEN s.payment_type = 'subscription' THEN 1 ELSE 0 END) AS sub_slots,
@@ -806,21 +808,17 @@ async def finance_month(message: Message):
             FROM slots s
             JOIN trainings t ON t.id = s.training_id
             WHERE t.status != 'cancelled'
-            AND strftime('%Y-%m', t.date) = ?
-            AND s.user_id NOT IN (?, ?)
-        """, (
-            period,
-            ADMIN_USER_IDS[0],
-            ADMIN_USER_IDS[1],
-            ADMIN_USER_IDS[2],
-        ))
+              AND strftime('%Y-%m', t.date) = ?
+              AND s.user_id NOT IN ({admin_placeholders})
+        """
+        params = (period, *ADMIN_USER_IDS)
 
-
+        cursor.execute(sql, params)
         total_slots, sub_slots, one_slots = cursor.fetchone()
+
         sub_slots = sub_slots or 0
         one_slots = one_slots or 0
 
-    # 3️⃣ расчёты
     total_capacity = trainings_count * SLOTS_PER_TRAINING
     free_slots = total_capacity - total_slots
 
@@ -830,7 +828,6 @@ async def finance_month(message: Message):
     balance = income_one_time - rent_total
     need_to_break_even = max(0, (-balance + ONE_TIME_PRICE - 1) // ONE_TIME_PRICE)
 
-    # 4️⃣ вывод
     lines = [
         f"💰 <b>Финансовый отчёт — {period}</b>",
         "",
