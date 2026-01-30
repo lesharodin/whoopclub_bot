@@ -644,3 +644,73 @@ async def list_abonement_users(message: Message):
             await message.answer(chunk, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         except TelegramBadRequest:
             await message.answer(chunk)
+
+ADMIN_USER_IDS = (932407372, 132536948)
+
+
+@router.message(Command("stats"))
+async def attendance_stats(message: Message, command: CommandObject):
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    period = (command.args or "").strip()  # "", "2025", "2025-01"
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        base_where = """
+            t.status != 'cancelled'
+            AND s.user_id NOT IN (?, ?)
+        """
+
+        if not period:
+            title = "📊 Посещаемость за всё время"
+            sql = f"""
+                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                FROM slots s
+                JOIN users u ON u.user_id = s.user_id
+                JOIN trainings t ON t.id = s.training_id
+                WHERE {base_where}
+                GROUP BY u.user_id
+                ORDER BY cnt DESC
+            """
+            params = ADMIN_USER_IDS
+
+        elif len(period) == 4 and period.isdigit():
+            title = f"📊 Посещаемость за {period} год"
+            sql = f"""
+                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                FROM slots s
+                JOIN users u ON u.user_id = s.user_id
+                JOIN trainings t ON t.id = s.training_id
+                WHERE {base_where}
+                  AND strftime('%Y', t.date) = ?
+                GROUP BY u.user_id
+                ORDER BY cnt DESC
+            """
+            params = ADMIN_USER_IDS + (period,)
+
+        elif len(period) == 7 and period[4] == "-":
+            title = f"📊 Посещаемость за {period}"
+            sql = f"""
+                SELECT u.nickname, COUNT(DISTINCT s.training_id) AS cnt
+                FROM slots s
+                JOIN users u ON u.user_id = s.user_id
+                JOIN trainings t ON t.id = s.training_id
+                WHERE {base_where}
+                  AND strftime('%Y-%m', t.date) = ?
+                GROUP BY u.user_id
+                ORDER BY cnt DESC
+            """
+            params = ADMIN_USER_IDS + (period,)
+
+        else:
+            await message.answer(
+                "❗ Неверный формат.\n"
+                "Используй:\n"
+                "• /stats\n"
+                "• /stats 2025\n"
+                "• /stats 2025-01"
+            )
+            return
