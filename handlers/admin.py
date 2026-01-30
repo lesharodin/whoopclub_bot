@@ -648,7 +648,7 @@ async def list_abonement_users(message: Message):
 ADMIN_USER_IDS = (932407372, 132536948)
 
 
-@router.message(Command("stats"))
+@admin_router.message(Command("stats"))
 async def attendance_stats(message: Message, command: CommandObject):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")
