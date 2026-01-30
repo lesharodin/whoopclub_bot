@@ -761,6 +761,7 @@ async def attendance_stats(message: Message):
 
     for chunk in chunk_text_by_lines("\n".join(lines)):
         await message.answer(chunk, parse_mode=ParseMode.HTML)
+        
 @router.message(F.text.startswith("/finance"))
 async def finance_month(message: Message):
     if message.from_user.id not in ADMINS:
@@ -805,9 +806,15 @@ async def finance_month(message: Message):
             FROM slots s
             JOIN trainings t ON t.id = s.training_id
             WHERE t.status != 'cancelled'
-              AND strftime('%Y-%m', t.date) = ?
-              AND s.user_id NOT IN (?, ?)
-        """, (period, *ADMIN_USER_IDS))
+            AND strftime('%Y-%m', t.date) = ?
+            AND s.user_id NOT IN (?, ?)
+        """, (
+            period,
+            ADMIN_USER_IDS[0],
+            ADMIN_USER_IDS[1],
+            ADMIN_USER_IDS[2],
+        ))
+
 
         total_slots, sub_slots, one_slots = cursor.fetchone()
         sub_slots = sub_slots or 0
