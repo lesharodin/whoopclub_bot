@@ -429,6 +429,7 @@ async def admin_help(message: Message):
         "🪪 <b>/id</b> — узнать свой Telegram ID\n"
         "🚒 <b>/progrev</b> — отправить прогрев о свободных местах\n"
         "🔁 <b>/resend_pending</b> — проверить нет ли залипших слотов\n"
+        "🗯 <b>/annoounce</b> — написать от имени бота /announce сообщение\n"
     )
 
     await message.answer(help_text, parse_mode="HTML")

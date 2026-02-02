@@ -75,7 +75,7 @@ sent_progrev_for_dates = set()  # локальный кэш, чтобы не с�
 async def check_and_send_progrev(bot: Bot):
     """
     Ежедневно в 13:00 шлём прогрев на завтрашнюю тренировку,
-    текст и логика такие же, как в /progrev, но для ровно следующего дня.
+    ТОЛЬКО если есть свободные места.
     """
     while True:
         now = datetime.now()
@@ -98,52 +98,72 @@ async def check_and_send_progrev(bot: Bot):
                 """, (date_only.isoformat(),))
                 row = cursor.fetchone()
 
-            if row:
-                training_id, training_date = row
+            if not row:
+                await asyncio.sleep(60)
+                continue
 
-                with get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT group_name, COUNT(*)
-                        FROM slots
-                        WHERE training_id = ? AND status IN ('confirmed')
-                        GROUP BY group_name
-                    """, (training_id,))
-                    counts = dict(cursor.fetchall())
+            training_id, training_date = row
 
-                # Формируем строки по всем группам, как в /progrev
-                lines = []
-                for group_name in GROUPS.keys():
-                    used = counts.get(group_name, 0)
-                    free = MAX_SLOTS_PER_GROUP[group_name] - used
-                    status = f"{free} мест" if free > 0 else "места закончились"
-                    lines.append(f"{get_group_label(group_name)}: <b>{status}</b>")
+            with get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT group_name, COUNT(*)
+                    FROM slots
+                    WHERE training_id = ? AND status IN ('confirmed')
+                    GROUP BY group_name
+                """, (training_id,))
+                counts = dict(cursor.fetchall())
 
-                date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+            # === ВАЖНО: считаем свободные места ===
+            free_slots_by_group = {}
+            total_free = 0
 
-                text = (
-                    f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
-                    f"📅 <b>{date_fmt}</b>\n\n"
-                    + "\n".join(lines) +
-                    "\n\n"
-                    f"🚀 Успей записаться, пока есть места!"
+            for group_name in GROUPS.keys():
+                used = counts.get(group_name, 0)
+                free = MAX_SLOTS_PER_GROUP[group_name] - used
+                free_slots_by_group[group_name] = free
+                total_free += max(free, 0)
+
+            # ❌ НЕТ свободных мест — НИЧЕГО НЕ ШЛЁМ
+            if total_free <= 0:
+                print(f"[i] Прогрев НЕ отправлён — мест нет (training_id={training_id})")
+                sent_progrev_for_dates.add(date_only)  # чтобы не проверять снова
+                await asyncio.sleep(60)
+                continue
+
+            # === Формируем сообщение ===
+            lines = []
+            for group_name, free in free_slots_by_group.items():
+                status = f"{free} мест" if free > 0 else "места закончились"
+                lines.append(f"{get_group_label(group_name)}: <b>{status}</b>")
+
+            date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+
+            text = (
+                f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
+                f"📅 <b>{date_fmt}</b>\n\n"
+                + "\n".join(lines) +
+                "\n\n"
+                f"🚀 Успей записаться, пока есть места!"
+            )
+
+            try:
+                await bot.send_message(
+                    chat_id=REQUIRED_CHAT_ID,
+                    text=text,
+                    parse_mode="HTML"
                 )
+                sent_progrev_for_dates.add(date_only)
+                print(f"[+] Сообщение про прогрев на {date_only} отправлено")
+            except Exception as e:
+                for admin in ADMINS:
+                    try:
+                        await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
+                    except:
+                        pass
 
-                try:
-                    await bot.send_message(chat_id=REQUIRED_CHAT_ID, text=text, parse_mode="HTML")
-                    sent_progrev_for_dates.add(date_only)
-                    print(f"[+] Сообщение про прогрев на {date_only} отправлено")
-                except Exception as e:
-                    for admin in ADMINS:
-                        try:
-                            await bot.send_message(admin, f"❗Ошибка отправки сообщения о прогреве: {e}")
-                        except:
-                            pass
+        await asyncio.sleep(60)
 
-        await asyncio.sleep(60)  # проверяем каждую минуту
-
-
-full_trainings_sent = set()  # хранит training_id, по которым уже отправлено
 
 
 async def monitor_full_trainings(bot: Bot):
