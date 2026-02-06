@@ -25,6 +25,7 @@ async def payments_ui_watcher(bot):
                 FROM payments p
                 WHERE p.status = 'succeeded'
                   AND p.ui_status = 'shown'
+                  AND p.target_type IN ('slot', 'subscription')
             """)
             payments = cursor.fetchall()
 
