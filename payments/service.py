@@ -80,7 +80,7 @@ def create_payment(
         "capture": True,
         "confirmation": {
             "type": "redirect",
-            "return_url": "https://whoopclub.ru/payment/success"
+            "return_url": "https://whoopclub.ru/"
         },
         "description": description or f"Оплата {target_type}",
         "metadata": {
