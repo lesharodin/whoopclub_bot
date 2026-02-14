@@ -4,8 +4,8 @@ def get_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="👥 Участники")],
-            [KeyboardButton(text="📋 Записаться"), KeyboardButton(text="📅 Мои записи")],
-            [KeyboardButton(text="🎟 Купить абонемент"), KeyboardButton(text="👤 Мой профиль")]
+            [KeyboardButton(text="📋 Записаться", style="primary"), KeyboardButton(text="📅 Мои записи")],
+            [KeyboardButton(text="🎟 Купить абонемент", style="secondary"), KeyboardButton(text="👤 Мой профиль")]
         ],
         resize_keyboard=True
     )
