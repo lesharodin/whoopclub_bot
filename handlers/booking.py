@@ -872,7 +872,12 @@ async def confirm_cancel_request(callback: CallbackQuery):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT training_id FROM slots WHERE id = ? AND user_id = ?
+            SELECT s.payment_type, t.date, s.group_name, s.channel,
+                   u.nickname, u.system, t.id
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ? AND s.user_id = ? AND s.status = 'confirmed'
         """, (slot_id, user_id))
         row = cursor.fetchone()
 
@@ -880,37 +885,31 @@ async def confirm_cancel_request(callback: CallbackQuery):
             await callback.answer("Запись не найдена", show_alert=True)
             return
 
-        cursor.execute("UPDATE slots SET status = 'pending_cancel' WHERE id = ?", (slot_id,))
+        payment_type, training_date, group, channel, nickname, system, training_id = row
+
+        now = datetime.now()
+        training_dt = datetime.fromisoformat(training_date)
+        hours_before = (training_dt - now).total_seconds() / 3600
+
+        cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
+
+        if hours_before > 24:
+            cursor.execute("UPDATE users SET subscription = subscription + 1 WHERE user_id = ?", (user_id,))
+            refund_text = "🎟 Абонемент возвращён."
+        else:
+            refund_text = "💸 Меньше 24 часов — абонемент не возвращается, средства ушли в донат клуба."
+
         conn.commit()
 
-    # Получаем данные о слоте
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT s.user_id, s.group_name, s.channel, s.payment_type, t.date,
-                   u.nickname, u.system
-            FROM slots s
-            JOIN trainings t ON s.training_id = t.id
-            JOIN users u ON s.user_id = u.user_id
-            WHERE s.id = ?
-        """, (slot_id,))
-        row = cursor.fetchone()
-
-    if not row:
-        await callback.message.edit_text("❌ Ошибка: данные не найдены.")
-        return
-
-    user_id, group, channel, payment_type, training_date, nickname, system = row
-    full_name = callback.from_user.full_name
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    group_label = get_group_label(group)
+    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
     username = callback.from_user.username
+    full_name = callback.from_user.full_name
     user_link = f"@{username}" if username else f"<a href='tg://user?id={user_id}'>{full_name}</a>"
 
-    group_label = get_group_label(group)
-    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
-    payment_text = "🎟 Абонемент" if payment_type == "subscription" else "💳 Оплата по реквизитам"
-
-    text = (
-        f"🔔 Запрос отмены записи:\n"
+    admin_log = (
+        f"❎ Запись отменена пользователем (без подтверждения админом)\n"
         f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
         f"📅 Дата: <b>{date_fmt}</b>\n"
         f"🏁 Группа: <b>{group_label}</b>\n"
@@ -918,27 +917,30 @@ async def confirm_cancel_request(callback: CallbackQuery):
         f"🎮 OSD: <b>{nickname}</b>\n"
         f"🎥 Видео: <b>{system}</b>\n"
         f"{payment_text}\n"
-        f"⏳ Ожидает подтверждения отмены"
+        f"{refund_text}"
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[ 
-        InlineKeyboardButton(text="✅ Подтвердить отмену", callback_data=f"admin_cancel:{slot_id}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_reject_cancel:{slot_id}")
-    ]])
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND status = 'confirmed'
+        """, (training_id,))
+        booked = cursor.fetchone()[0]
 
-    # Только теперь — редактируем сообщение пользователя
-    await callback.message.edit_text("⏳ Запрос на отмену отправлен. Ожидайте подтверждения от администратора.")
+    free_slots = TOTAL_SLOTS - booked
 
-    # И после этого — уведомляем админов
+    await callback.message.edit_text(f"✅ Запись отменена.\n{refund_text}")
+
+    await callback.bot.send_message(
+        REQUIRED_CHAT_ID,
+        f"🚪 Освободилось место на тренировке <b>{date_fmt}</b>!\n"
+        f"Осталось мест: {free_slots}/{TOTAL_SLOTS}",
+        parse_mode="HTML"
+    )
+
     for admin in ADMINS:
-        msg = await callback.bot.send_message(admin, text, reply_markup=kb, parse_mode="HTML")
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO admin_notifications (slot_id, admin_id, message_id)
-                VALUES (?, ?, ?)
-            """, (slot_id, admin, msg.message_id))
-            conn.commit()
+        await callback.bot.send_message(admin, admin_log, parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("admin_cancel:"))
 async def admin_confirm_cancel(callback: CallbackQuery):
@@ -1022,7 +1024,8 @@ async def admin_confirm_cancel(callback: CallbackQuery):
         f"📡 Канал: <b>{channel}</b>\n"
         f"🎮 OSD: <b>{nickname}</b>\n"
         f"🎥 Видео: <b>{system}</b>\n"
-        f"{payment_text}"
+        f"{payment_text}\n"
+        f"{refund_text}"
     )
     # Подсчёт оставшихся мест
     with get_connection() as conn:
