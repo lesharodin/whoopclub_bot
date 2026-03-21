@@ -6,7 +6,6 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from aiohttp import ClientTimeout
-from aiohttp_socks import ProxyConnector, ProxyType
 from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import BOT_TOKEN, PROXY
@@ -34,12 +33,13 @@ async def main():
     print("✅ Инициализация БД завершена")
 
     # --- Настройка HTTP session ---
-    timeout = ClientTimeout(total=20)
+    #timeout = ClientTimeout(total=20)
 
     if PROXY:
         print(f"🌐 Используем прокси: {PROXY}")
-        connector = ProxyConnector.from_url(f"socks5://{PROXY}:1081")
-        session = AiohttpSession(connector=connector)
+        session = AiohttpSession(
+            proxy=f"socks5://{PROXY}:1081"
+        )
     else:
         print("🔌 Работаем без прокси")
         session = AiohttpSession()
