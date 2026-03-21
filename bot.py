@@ -37,7 +37,12 @@ async def main():
 
     if PROXY:
         print(f"🌐 Используем прокси: {PROXY}")
-        connector = ProxyConnector.from_url(PROXY, rdns=True)
+        connector = ProxyConnector(
+            proxy_type=ProxyType.SOCKS5,
+            host=PROXY,
+            port=1081,
+            rdns=True,
+        )
         session = ClientSession(
             connector=connector,
             timeout=timeout,
