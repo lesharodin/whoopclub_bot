@@ -37,11 +37,18 @@ async def main():
 
     if PROXY:
         print(f"🌐 Используем прокси: {PROXY}")
-        connector = ProxyConnector.from_url(PROXY)
-        session = ClientSession(connector=connector, timeout=timeout)
+        connector = ProxyConnector.from_url(PROXY, rdns=True)
+        session = ClientSession(
+            connector=connector,
+            timeout=timeout,
+            trust_env=True,
+        )
     else:
         print("🔌 Работаем без прокси")
-        session = ClientSession(timeout=timeout)
+        session = ClientSession(
+            timeout=timeout,
+            trust_env=True,
+        )
 
     # --- Создание бота ---
     bot = Bot(
