@@ -5,8 +5,9 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from aiohttp import ClientSession, ClientTimeout
+from aiohttp import ClientTimeout
 from aiohttp_socks import ProxyConnector, ProxyType
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import BOT_TOKEN, PROXY
 from handlers import registration, profile, admin, booking, participants, subscription
@@ -37,23 +38,17 @@ async def main():
 
     if PROXY:
         print(f"🌐 Используем прокси: {PROXY}")
-        connector = ProxyConnector(
-            proxy_type=ProxyType.SOCKS5,
-            host=PROXY,
-            port=1081,
-            rdns=True,
-        )
-        session = ClientSession(
-            connector=connector,
-            timeout=timeout,
-            trust_env=True,
-        )
+        connector = ProxyConnector.from_url(f"socks5://{PROXY}:1081")
+        session = AiohttpSession(connector=connector)
     else:
         print("🔌 Работаем без прокси")
-        session = ClientSession(
-            timeout=timeout,
-            trust_env=True,
-        )
+        session = AiohttpSession()
+
+    bot = Bot(
+        token=BOT_TOKEN,
+        session=session,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
 
     # --- Создание бота ---
     bot = Bot(
