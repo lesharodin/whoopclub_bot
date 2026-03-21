@@ -1,47 +1,78 @@
+import asyncio
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
-from config import BOT_TOKEN
+
+from aiohttp import ClientSession, ClientTimeout
+from aiohttp_socks import ProxyConnector
+
+from config import BOT_TOKEN, PROXY
 from handlers import registration, profile, admin, booking, participants, subscription
 from database.db import init_db
-from middlewares.private_only import PrivateChatOnlyMiddleware  # импортируй middleware
+from middlewares.private_only import PrivateChatOnlyMiddleware
 from background_tasks import monitor_pending_slots, check_and_send_progrev, monitor_full_trainings
 from background_payments import payments_ui_watcher
 
 
-bot = Bot(
-    token=BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-)
+async def on_startup(bot: Bot):
+    asyncio.create_task(monitor_pending_slots(bot))
+    asyncio.create_task(check_and_send_progrev(bot))
+    asyncio.create_task(monitor_full_trainings(bot))
+    asyncio.create_task(payments_ui_watcher(bot))
 
-dp = Dispatcher(storage=MemoryStorage())
 
-import asyncio
-from database.db import init_db
+async def on_shutdown(bot: Bot):
+    await bot.session.close()
+
 
 async def main():
-    init_db()  # ⬅️ Этот вызов должен быть до всего остального!
+    # --- Инициализация БД ---
+    init_db()
     print("✅ Инициализация БД завершена")
-    # Добавляем middleware
+
+    # --- Настройка HTTP session ---
+    timeout = ClientTimeout(total=20)
+
+    if PROXY:
+        print(f"🌐 Используем прокси: {PROXY}")
+        connector = ProxyConnector.from_url(PROXY)
+        session = ClientSession(connector=connector, timeout=timeout)
+    else:
+        print("🔌 Работаем без прокси")
+        session = ClientSession(timeout=timeout)
+
+    # --- Создание бота ---
+    bot = Bot(
+        token=BOT_TOKEN,
+        session=session,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+    )
+
+    # --- Dispatcher ---
+    dp = Dispatcher(storage=MemoryStorage())
+
+    # Middleware
     dp.message.middleware(PrivateChatOnlyMiddleware(allowed_chat_commands={"/help", "/participants"}))
     dp.callback_query.middleware(PrivateChatOnlyMiddleware())
+
+    # Routers
     dp.include_router(registration.router)
     dp.include_router(profile.router)
     dp.include_router(admin.router)
     dp.include_router(booking.router)
     dp.include_router(participants.router)
     dp.include_router(subscription.router)
+    dp.include_router(admin.admin_router)
+
+    # Lifecycle
     dp.startup.register(on_startup)
-    dp.include_router(admin.admin_router)\
+    dp.shutdown.register(on_shutdown)
 
     print("🚀 Бот запущен...")
     await dp.start_polling(bot)
-async def on_startup(bot: Bot):
-    asyncio.create_task(monitor_pending_slots(bot))
-    asyncio.create_task(check_and_send_progrev(bot))
-    asyncio.create_task(monitor_full_trainings(bot))
-    asyncio.create_task(payments_ui_watcher(bot))
+
 
 if __name__ == "__main__":
     asyncio.run(main())
