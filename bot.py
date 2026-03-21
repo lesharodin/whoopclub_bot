@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from aiohttp import ClientSession, ClientTimeout
-from aiohttp_socks import ProxyConnector
+from aiohttp_socks import ProxyConnector, ProxyType
 
 from config import BOT_TOKEN, PROXY
 from handlers import registration, profile, admin, booking, participants, subscription
