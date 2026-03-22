@@ -184,8 +184,7 @@ async def monitor_full_trainings(bot: Bot):
             trainings = cursor.fetchall()
 
             for training_id, date_str in trainings:
-                if training_id in full_trainings_sent:
-                    continue
+
 
                 # Проверяем confirmed-записи по группам
                 cursor.execute("""
@@ -206,6 +205,5 @@ async def monitor_full_trainings(bot: Bot):
                         await bot.send_message(REQUIRED_CHAT_ID, text, parse_mode="HTML")
                         cursor.execute("UPDATE trainings SET full_message_sent = 1 WHERE id = ?", (training_id,))
                         conn.commit()
-                        full_trainings_sent.add(training_id)
                     except Exception as e:
                         print(f"[!] Ошибка при отправке уведомления о полной тренировке: {e}")
