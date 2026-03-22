@@ -5,7 +5,6 @@ from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from aiohttp import ClientTimeout
 from aiogram.client.session.aiohttp import AiohttpSession
 
 from config import BOT_TOKEN, PROXY
@@ -14,6 +13,27 @@ from database.db import init_db
 from middlewares.private_only import PrivateChatOnlyMiddleware
 from background_tasks import monitor_pending_slots, check_and_send_progrev, monitor_full_trainings
 from background_payments import payments_ui_watcher
+
+
+# --- SESSION ---
+if PROXY:
+    print(f"🌐 Используем прокси: {PROXY}")
+    session = AiohttpSession(
+        proxy=f"socks5://{PROXY}:1081"
+    )
+else:
+    print("🔌 Работаем без прокси")
+    session = AiohttpSession()
+
+
+# --- BOT (как раньше — глобально) ---
+bot = Bot(
+    token=BOT_TOKEN,
+    session=session,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
+
+dp = Dispatcher(storage=MemoryStorage())
 
 
 async def on_startup(bot: Bot):
@@ -28,37 +48,8 @@ async def on_shutdown(bot: Bot):
 
 
 async def main():
-    # --- Инициализация БД ---
     init_db()
     print("✅ Инициализация БД завершена")
-
-    # --- Настройка HTTP session ---
-    #timeout = ClientTimeout(total=20)
-
-    if PROXY:
-        print(f"🌐 Используем прокси: {PROXY}")
-        session = AiohttpSession(
-            proxy=f"socks5://{PROXY}:1081"
-        )
-    else:
-        print("🔌 Работаем без прокси")
-        session = AiohttpSession()
-
-    bot = Bot(
-        token=BOT_TOKEN,
-        session=session,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
-
-    # --- Создание бота ---
-    bot = Bot(
-        token=BOT_TOKEN,
-        session=session,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
-
-    # --- Dispatcher ---
-    dp = Dispatcher(storage=MemoryStorage())
 
     # Middleware
     dp.message.middleware(PrivateChatOnlyMiddleware(allowed_chat_commands={"/help", "/participants"}))
