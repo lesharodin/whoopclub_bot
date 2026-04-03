@@ -3,7 +3,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from database.db import get_connection
-from keyboards.menu import get_main_keyboard
+from keyboards.menu import get_user_main_keyboard
 from config import REQUIRED_CHAT_ID
 
 router = Router()
@@ -46,7 +46,7 @@ async def start_registration(message: Message, state: FSMContext):
             f"👋 Ты уже зарегистрирован!\n\n"
             f"👤 Никнейм: {nickname}\n"
             f"🛠️ Система: {system}",
-            reply_markup=get_main_keyboard()
+            reply_markup=get_user_main_keyboard(user_id)
         )
         return
 
@@ -89,7 +89,7 @@ async def finish_registration(message: Message, state: FSMContext):
         f"✅ Регистрация завершена!\n\n"
         f"👤 Никнейм: {nickname}\n"
         f"🛠️ Система: {system}",
-        reply_markup=get_main_keyboard()
+        reply_markup=get_user_main_keyboard(user_id)
     )
     welcome_message = (
     "👋 <b>Добро пожаловать в ВупКлуб!</b>\n\n"

@@ -397,7 +397,7 @@ async def confirm_training_cancel(callback: CallbackQuery):
 
 # подсказки
 
-@router.message(F.text == "/admin")
+@router.message(F.text.in_({"/admin", "Админка"}))
 async def admin_help(message: Message):
     if message.from_user.id not in ADMINS:
         await message.answer("❌ У тебя нет прав администратора.")

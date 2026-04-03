@@ -7,7 +7,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 )
 from database.db import get_connection
-from keyboards.menu import get_main_keyboard
+from keyboards.menu import get_user_main_keyboard
 
 router = Router()
 
@@ -77,5 +77,5 @@ async def process_system(message: Message, state: FSMContext):
         """, (user_id, nickname, system))
         conn.commit()
 
-    await message.answer("✅ Профиль обновлён.", reply_markup=get_main_keyboard())
+    await message.answer("✅ Профиль обновлён.", reply_markup=get_user_main_keyboard(user_id))
     await state.clear()
